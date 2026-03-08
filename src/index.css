@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    user-select: none;
+  }
+
+  /* ── DARK THEME (default) ── */
+  :root, [data-theme="dark"] {
+    --bg:       #080810;
+    --surface:  #0f0f18;
+    --surface2: #17172a;
+    --surface3: #1e1e35;
+    --border:   #252538;
+    --border2:  #32324a;
+    --text:     #e2e2f0;
+    --muted:    #5a5a7a;
+    --muted2:   #8888aa;
+    --accent:   #7c6af7;
+    --accent2:  #4fc3f7;
+    --green:    #4ade80;
+    --red:      #f87171;
+    color-scheme: dark;
+  }
+
+  /* ── LIGHT THEME ── */
+  [data-theme="light"] {
+    --bg:       #f4f4fb;
+    --surface:  #ffffff;
+    --surface2: #ebebf5;
+    --surface3: #e0e0ee;
+    --border:   #d0d0e0;
+    --border2:  #b8b8d0;
+    --text:     #1a1a2e;
+    --muted:    #8888aa;
+    --muted2:   #5a5a7a;
+    --accent:   #6254e8;
+    --accent2:  #0ea5e9;
+    --green:    #16a34a;
+    --red:      #dc2626;
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    transition: background 0.3s ease, color 0.3s ease;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+}
+
+@layer utilities {
+  .bg-bg       { background-color: var(--bg) !important; }
+  .bg-surface  { background-color: var(--surface) !important; }
+  .bg-surface2 { background-color: var(--surface2) !important; }
+  .bg-surface3 { background-color: var(--surface3) !important; }
+  .border-border  { border-color: var(--border) !important; }
+  .border-border2 { border-color: var(--border2) !important; }
+  .border-accent  { border-color: var(--accent) !important; }
+  .text-text   { color: var(--text) !important; }
+  .text-muted  { color: var(--muted) !important; }
+  .text-muted2 { color: var(--muted2) !important; }
+  .text-accent { color: var(--accent) !important; }
+  .text-accent2{ color: var(--accent2) !important; }
+}
