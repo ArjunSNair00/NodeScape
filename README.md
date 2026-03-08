@@ -110,6 +110,9 @@ NodeScape is constantly evolving. The ultimate vision is to transform NodeScape 
 - 🔍 **Search Bar:** Ability to search and filter nodes, and also by content within the node.
 - hover the node to see the content
 - attach nodes dynamically as you go (when using ai to generate nodes and edges)
+- smart coloring (colour similar nodes)
+- add glow and bloom to nodes to amplify galaxy feeling
+- items under a class should be clustered
 ---
 
 <p align="center">
