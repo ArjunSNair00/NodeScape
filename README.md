@@ -47,13 +47,13 @@ Clicking on any node smoothly transitions you into a detailed full-screen "Page 
 </p>
 
 ### 🏛️ Architecture
-LLM (ChatGPT / Claude / etc)
-        ↓
-structured JSON
-        ↓
-NodeScape parser
-        ↓
-3D graph renderer (Three.js + d3-force)
+LLM (ChatGPT / Claude / etc)<br>
+        ↓<br>
+structured JSON<br>
+        ↓<br>
+NodeScape parser<br>
+        ↓<br>
+3D graph renderer (Three.js + d3-force)<br>
 
 
 ### 🎛️ AI Data & Tool Sidebars
