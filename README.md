@@ -1,5 +1,6 @@
-# 🌌 NodeScape
-
+<p align="center">
+🌌 NodeScape
+</p>
 <p align="center">
   <i>"Explore a subject like a galaxy."</i>
 </p>
