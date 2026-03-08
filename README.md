@@ -21,6 +21,9 @@
 <p align="center">
   <img src="screenshots&demos/graph1.png" alt="Node Page View" width="800" />
 </p>
+<p align="center">
+  <img src="screenshots&demos/graph.gif" alt="Node Page View" width="800" />
+</p>
 ---
 
 ## ✨ Features & UI Components
