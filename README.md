@@ -46,6 +46,16 @@ Clicking on any node smoothly transitions you into a detailed full-screen "Page 
   <img src="screenshots&demos/note.png" alt="Node Page View" width="800" />
 </p>
 
+### 🏛️ Architecture
+LLM (ChatGPT / Claude / etc)
+        ↓
+structured JSON
+        ↓
+NodeScape parser
+        ↓
+3D graph renderer (Three.js + d3-force)
+
+
 ### 🎛️ AI Data & Tool Sidebars
 NodeScape features two vital sidebars in the 3D space:
 1. **AI Data Sidebar (Right):** Access your **Prompt** templates to copy-paste into an LLM. Paste JSON results directly into the **Paste** tab to generate the graph instantaneously. Use the **Editor** tab for live access to the raw internal JSON—surgically add, modify, or remove nodes any time. Toggle various visual graph settings in the **Controls** tab.
