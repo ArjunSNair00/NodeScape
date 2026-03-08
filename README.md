@@ -104,7 +104,7 @@ NodeScape is constantly evolving. The ultimate vision is to transform NodeScape 
 - 🌱 **Self-Expanding Webs:** Nodes will have the ability to "autonomously think" and fetch missing gaps of knowledge without requiring manual prompts.
 - 🗄️ **Persistent Database:** Transitioning from browser local storage to an actual, robust database system to save graphs securely and seamlessly across multiple devices.
 - ⚙️ **Dedicated AI Backend:** Building a separate back-end architecture specifically designed to interface with various AI models and services securely and efficiently.
-
+- 🔍 **Search Bar:** Ability to search and filter nodes, and also by content within the node.
 ---
 
 <p align="center">
