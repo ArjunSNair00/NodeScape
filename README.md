@@ -23,7 +23,6 @@
 </p>
 <p align="center">
   <img src="screenshots&demos/graph.gif" alt="Node Page View" width="800" />
-  ![Alt text for the GIF](screenshots&demos/graph.gif)
 </p>
 ---
 
