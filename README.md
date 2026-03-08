@@ -12,8 +12,7 @@
 </p>
 
 <p align="center">
-  <strong>NodeScape</strong> — Explore knowledge in 3D. It is a fast, visually stunning 3D knowledge graph visualizer and editor. <br/>
-  Is is an interactive Three.js knowledge graph visualizer powered by AI-generated data.
+  <strong>NodeScape</strong> — Explore knowledge in 3D. An interactive Three.js knowledge graph visualizer and editor powered by AI-generated data. <br/>
 </p>
 
 <p align="center">
