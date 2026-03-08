@@ -66,7 +66,7 @@ Built for extreme performance, scale, and modern UI practices.
 ### 🌟 Live Demo
 
 NodeScape is hosted live! You can try out the application directly in your browser:  
-[**Try NodeScape on Vercel**](https://your-vercel-project-link.vercel.app/)
+[**Try NodeScape on Vercel**](https://node-scape.vercel.app/)
 
 ### 1. Installation
 
@@ -105,6 +105,8 @@ NodeScape is constantly evolving. The ultimate vision is to transform NodeScape 
 - 🗄️ **Persistent Database:** Transitioning from browser local storage to an actual, robust database system to save graphs securely and seamlessly across multiple devices.
 - ⚙️ **Dedicated AI Backend:** Building a separate back-end architecture specifically designed to interface with various AI models and services securely and efficiently.
 - 🔍 **Search Bar:** Ability to search and filter nodes, and also by content within the node.
+- hover the node to see the content
+- attach nodes dynamically as you go (when using ai to generate nodes and edges)
 ---
 
 <p align="center">
