@@ -16,10 +16,10 @@
   An interactive Three.js knowledge graph visualizer, editor and note-making tool powered by AI-generated data. 
 </p>
 
-<p align="center">
-  <img src="screenshots&demos/homepage.png" alt="NodeScape Homepage" width="800" />
-</p>
 
+<p align="center">
+  <img src="screenshots&demos/graph2.png" alt="Node Page View" width="800" />
+</p>
 ---
 
 ## ✨ Features & UI Components
@@ -33,9 +33,11 @@ Seamlessly rotate, pan, and zoom through complex subjects in 3D space.
 - **Mobile:** Adaptive on-screen D-Pad interface for panning, intuitive pinch-to-zoom, and touch rotation.
 
 <p align="center">
+  <img src="screenshots&demos/homepage.png" alt="3D Graph Viewer" width="800" />
+</p>
+<p align="center">
   <img src="screenshots&demos/graph.png" alt="3D Graph Viewer" width="800" />
 </p>
-
 ### 📄 Detailed Node Page View
 Clicking on any node smoothly transitions you into a detailed full-screen "Page View" representing the core concept. These pages support markdown-style rich formatting to display in-depth content. Nodes can link to each other, allowing you to seamlessly surf through subjects directly from within the pages!
 
