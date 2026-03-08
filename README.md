@@ -40,7 +40,7 @@ Seamlessly rotate, pan, and zoom through complex subjects in 3D space.
   <img src="screenshots&demos/homepage.png" alt="3D Graph Viewer" width="800" />
 </p>
 <p align="center">
-  <img src="screenshots&demos/graph.png" alt="3D Graph Viewer" width="800" />
+  <img src="screenshots&demos/graph.png" alt="3D Graph Viewer" width="800" height="400"/>
 </p>
 ### 📄 Detailed Node Page View
 Clicking on any node smoothly transitions you into a detailed full-screen "Page View" representing the core concept. These pages support markdown-style rich formatting to display in-depth content. Nodes can link to each other, allowing you to seamlessly surf through subjects directly from within the pages!
