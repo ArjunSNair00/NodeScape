@@ -19,7 +19,7 @@
 
 
 <p align="center">
-  <img src="screenshots&demos/graph2.png" alt="Node Page View" width="800" />
+  <img src="screenshots&demos/graph.png" alt="Node Page View" width="800" />
 </p>
 ---
 
