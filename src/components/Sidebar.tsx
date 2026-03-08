@@ -121,7 +121,7 @@ export default function Sidebar({ open, graphData, graphRef, onClose, onGraphCha
 function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | null> }) {
   const [jiggling, setJiggling] = useState(false)
   const [labelLevel, setLabelLevel] = useState(() => Number(sessionStorage.getItem('labelLevel') || 5)) // 1–9, 5 = default (×1.0)
-  const [drawLevel, setDrawLevel] = useState(() => Number(sessionStorage.getItem('drawLevel') || 5)) // 1-9, 5 = default
+  const [drawLevel, setDrawLevel] = useState(() => Number(sessionStorage.getItem('drawLevel') || 9)) // 1-9, 5 = default
   const [idleRotate, setIdleRotate] = useState(() => sessionStorage.getItem('idleRotate') !== 'false')
   const [edgeHover, setEdgeHover] = useState(() => sessionStorage.getItem('edgeHover') === 'true')
   const [continuousPhysics, setContinuousPhysics] = useState(() => sessionStorage.getItem('continuousPhysics') === 'true')
