@@ -48,7 +48,7 @@ Clicking on any node smoothly transitions you into a detailed full-screen "Page 
 
 ### 🏛️ Architecture
 <p align="center">
-LLM (ChatGPT / Claude / etc)<br>
+LLM (ChatGPT / Gemini / Claude / etc)<br>
 </p>
 <p align="center">
  ↓<br>
