@@ -66,7 +66,7 @@ Built for extreme performance, scale, and modern UI practices.
 ### 🌟 Live Demo
 
 NodeScape is hosted live! You can try out the application directly in your browser:  
-[**Try NodeScape on Vercel**](https://your-vercel-project-link.vercel.app/)
+[**Try NodeScape on Vercel**](https://node-scape.vercel.app/)
 
 ### 1. Installation
 
