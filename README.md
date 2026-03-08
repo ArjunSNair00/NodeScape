@@ -22,7 +22,7 @@
   <img src="screenshots&demos/graph1.png" alt="Node Page View" width="800" />
 </p>
 <p align="center">
-  <img src="screenshots&demos/graph.gif" alt="Node Page View" width="400" />
+  <img src="screenshots&demos/graph.gif" alt="Node Page View" width="400" height="100"/>
 </p>
 ---
 
