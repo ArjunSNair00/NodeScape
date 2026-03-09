@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GraphData, GraphHandle } from '../types/graph'
 import { AI_PROMPT, EXAMPLE_TOPICS } from '../data/defaultGraph'
@@ -14,9 +14,10 @@ interface Props {
   onGoHome: () => void
 }
 
-type Tab = 'prompt' | 'paste' | 'editor' | 'controls' | 'info'
+type Tab = 'ai' | 'prompt' | 'paste' | 'editor' | 'controls' | 'info'
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'ai',       label: '✦ AI'     },
   { id: 'prompt',   label: 'PROMPT'   },
   { id: 'paste',    label: 'PASTE'    },
   { id: 'editor',   label: 'EDITOR'   },
@@ -25,7 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 export default function Sidebar({ open, graphData, graphRef, onClose, onGraphChange, onSave, onGoHome }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('prompt')
+  const [activeTab, setActiveTab] = useState<Tab>('ai')
   const [copied, setCopied] = useState(false)
   const [jsonInput, setJsonInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +105,8 @@ export default function Sidebar({ open, graphData, graphRef, onClose, onGraphCha
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className={`flex-1 overflow-x-hidden ${activeTab === 'ai' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+            {activeTab === 'ai'      && <AiChatTab onGraphChange={onGraphChange} />}
             {activeTab === 'prompt'   && <PromptTab copied={copied} onCopy={handleCopyPrompt} />}
             {activeTab === 'paste'    && <PasteTab value={jsonInput} onChange={setJsonInput} error={error} onGenerate={handleGenerate} />}
             {activeTab === 'editor'   && <DataEditTab graphData={graphData} onGraphChange={onGraphChange} />}
@@ -456,6 +458,383 @@ function DataEditTab({ graphData, onGraphChange }: { graphData: GraphData; onGra
       >
         Apply Changes
       </button>
+    </div>
+  )
+}
+
+// ── AI Chat Tab ───────────────────────────────────────────────────────────────
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
+const GROQ_MODEL = 'llama-3.3-70b-versatile'
+
+const SYSTEM_PROMPT = `You are a knowledge-graph JSON generator. The user gives a topic (and optionally extra instructions like node count). You MUST reply with a single, valid JSON object — no markdown, no explanation, no text outside the JSON.
+
+Schema (follow exactly):
+{"title":"Topic","nodes":[{"id":"snake_case_id","label":"Display Name","icon":"single_emoji","hex":"#hexcolor","category":"core|concept|example|resource|layer","content":"HTML string with <strong> tags. 2-3 paragraphs separated by <br><br>.","connections":["other_id"]}]}
+
+CRITICAL JSON rules:
+- Every string value MUST be enclosed in double quotes
+- Inside strings, escape double quotes as \\" and use <br><br> for line breaks (NO literal newlines inside strings)
+- HTML tags like <strong> and <br> go INSIDE the quoted string values, properly
+- All keys must be double-quoted
+- No trailing commas
+
+Content rules:
+- 8-14 nodes (unless user says otherwise)
+- connections reference valid ids; bidirectional (list once)
+- distinct hex colors per category; no white/black
+- icons: one relevant emoji per node
+- content: minimum 3 sentences, use <strong> for key terms, separate paragraphs with <br><br>
+- every node has at least 2 connections
+- the graph should feel like Obsidian: a web of related ideas`
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  nodeCount?: number
+}
+
+function tryRepairAndParse(raw: string): { data: import('../types/graph').GraphData | null; error?: string } {
+  // Strip markdown fences if partially present
+  let cleaned = raw
+    .replace(/^```json\s*/m, '')
+    .replace(/^```\s*/m, '')
+    .replace(/\s*```$/m, '')
+    .trim()
+
+  // Sanitize literal newlines inside JSON strings (very common LLM issue)
+  // Replace \n and \r inside strings with <br> or space
+  cleaned = cleaned.replace(/(["]):([\s\S]*?)(?="[,}\]])/g, (match) => {
+    return match.replace(/\n/g, '<br>').replace(/\r/g, '')
+  })
+
+  // Try direct parse first
+  try {
+    const obj = JSON.parse(cleaned)
+    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
+      const { data } = parseGraphJSON(JSON.stringify(obj))
+      return { data }
+    }
+  } catch { /* continue to repair */ }
+
+  // Try repairing by closing open brackets/braces
+  try {
+    let repaired = cleaned
+
+    // Remove any trailing incomplete key-value or comma patterns
+    repaired = repaired.replace(/,\s*$/, '')
+    repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, '')
+    repaired = repaired.replace(/:\s*$/, ': ""')
+    repaired = repaired.replace(/,\s*$/, '')
+
+    // Close any open string — count unescaped quotes
+    let inString = false
+    let escaped = false
+    for (const ch of repaired) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === '"') inString = !inString
+    }
+    if (inString) repaired += '"'
+
+    // Remove trailing comma again
+    repaired = repaired.replace(/,\s*$/, '')
+
+    // Count unmatched delimiters
+    const opens = { '{': 0, '[': 0 }
+    const closes: Record<string, '{' | '['> = { '}': '{', ']': '[' }
+    inString = false
+    escaped = false
+    for (const ch of repaired) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === '"') { inString = !inString; continue }
+      if (inString) continue
+      if (ch === '{' || ch === '[') opens[ch]++
+      if (ch === '}' || ch === ']') opens[closes[ch]]--
+    }
+
+    // Append closing delimiters in reverse order (arrays before objects)
+    for (let i = 0; i < opens['[']; i++) repaired += ']'
+    for (let i = 0; i < opens['{']; i++) repaired += '}'
+
+    const obj = JSON.parse(repaired)
+    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
+      const { data } = parseGraphJSON(JSON.stringify(obj))
+      return { data }
+    }
+  } catch (e) { return { data: null, error: (e as Error).message } }
+
+  return { data: null }
+}
+
+function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/graph').GraphData) => void }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', content: 'Type a topic and I\'ll generate a knowledge graph for you! You can also specify preferences like number of nodes.' }
+  ])
+  const [input, setInput] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const lastUpdateRef = useRef<number>(0)
+  const lastNodeCountRef = useRef<number>(0)
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
+
+  const sendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!input.trim() || isStreaming) return
+
+    const userText = input.trim()
+    const userMsg: ChatMessage = { role: 'user', content: userText }
+    setMessages(prev => [...prev, userMsg])
+    setInput('')
+    setIsStreaming(true)
+    lastNodeCountRef.current = 0
+
+    // Add a placeholder assistant message
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '✦ Generating graph…', nodeCount: 0 }
+    setMessages(prev => [...prev, assistantMsg])
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    let fullBuffer = ''
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userText },
+          ],
+          response_format: { type: 'json_object' },
+          stream: true,
+        }),
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null)
+        throw new Error(errData?.error?.message || `API error ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let done = false
+      let lineBuffer = '' // accumulate partial SSE lines across read() calls
+
+      while (!done) {
+        const { value, done: streamDone } = await reader.read()
+        done = streamDone
+        if (!value) continue
+
+        lineBuffer += decoder.decode(value, { stream: true })
+        const lines = lineBuffer.split('\n')
+        // Keep the last (potentially incomplete) line in the buffer
+        lineBuffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim().startsWith('data:')) continue
+          const jsonStr = line.replace(/^data:\s*/, '').trim()
+          if (jsonStr === '[DONE]') { done = true; break }
+
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const delta = parsed.choices?.[0]?.delta?.content
+            if (delta) {
+              fullBuffer += delta
+
+              // Throttle incremental graph updates to every 300ms
+              const now = Date.now()
+              if (now - lastUpdateRef.current > 300) {
+                lastUpdateRef.current = now
+                const { data } = tryRepairAndParse(fullBuffer)
+                if (data && data.nodes.length > lastNodeCountRef.current) {
+                  lastNodeCountRef.current = data.nodes.length
+                  onGraphChange(data)
+                  setMessages(prev => {
+                    const copy = [...prev]
+                    const last = copy[copy.length - 1]
+                    if (last.role === 'assistant') {
+                      copy[copy.length - 1] = {
+                        ...last,
+                        content: `✦ Generating graph… ${data.nodes.length} node${data.nodes.length > 1 ? 's' : ''} so far`,
+                        nodeCount: data.nodes.length,
+                      }
+                    }
+                    return copy
+                  })
+                }
+              }
+            }
+          } catch { /* ignore malformed SSE lines */ }
+        }
+      }
+
+      // Final parse with the complete buffer — use tryRepairAndParse for robustness
+      const finalResult = tryRepairAndParse(fullBuffer)
+      const data = finalResult.data
+      const error = finalResult.error || null
+      // Fallback: try the stricter parseGraphJSON if repair didn't work
+      if (!data) {
+        const strict = parseGraphJSON(fullBuffer)
+        if (strict.data) { 
+          onGraphChange(strict.data)
+          setMessages(prev => {
+            const copy = [...prev]
+            copy[copy.length - 1] = {
+              role: 'assistant',
+              content: `✦ Generated "${strict.data!.title}" — ${strict.data!.nodes.length} nodes`,
+              nodeCount: strict.data!.nodes.length,
+            }
+            return copy
+          })
+          return
+        }
+      }
+      if (data) {
+        onGraphChange(data)
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: `✦ Generated "${data.title}" — ${data.nodes.length} nodes`,
+            nodeCount: data.nodes.length,
+          }
+          return copy
+        })
+      } else {
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: `⚠ Could not parse graph: ${error || 'Unknown error'}`,
+          }
+          return copy
+        })
+      }
+    } catch (err: unknown) {
+      if ((err as Error).name !== 'AbortError') {
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = {
+            role: 'assistant',
+            content: `⚠ Error: ${(err as Error).message}`,
+          }
+          return copy
+        })
+      }
+    } finally {
+      setIsStreaming(false)
+      abortRef.current = null
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
+      {/* Messages area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ minHeight: 0 }}>
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[11.5px] leading-relaxed ${
+                msg.role === 'user'
+                  ? 'bg-accent text-white rounded-br-md'
+                  : 'bg-surface2 text-text border border-border rounded-bl-md'
+              }`}
+            >
+              {msg.content}
+              {msg.role === 'assistant' && msg.nodeCount !== undefined && msg.nodeCount > 0 && (
+                <div className="mt-2 flex items-center gap-1.5">
+                  {Array.from({ length: msg.nodeCount }, (_, j) => (
+                    <span
+                      key={j}
+                      className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+                      style={{ animationDelay: `${j * 80}ms` }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {isStreaming && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-1 px-3.5 py-2.5 bg-surface2 border border-border rounded-xl rounded-bl-md">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" style={{ animationDelay: '150ms' }} />
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Example topics */}
+      {messages.length <= 1 && (
+        <div className="px-4 pb-2">
+          <p className="text-[9px] text-muted tracking-widest uppercase mb-2">Try a topic</p>
+          <div className="flex flex-wrap gap-1.5">
+            {EXAMPLE_TOPICS.slice(0, 6).map(topic => (
+              <button
+                key={topic}
+                onClick={() => { setInput(topic) }}
+                className="text-[10px] text-muted2 bg-surface2 border border-border px-2.5 py-1 rounded-full hover:border-accent hover:text-accent transition-all duration-200"
+              >
+                {topic}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input area */}
+      <form className="flex items-center gap-2 px-4 py-3 border-t border-border flex-shrink-0" onSubmit={sendMessage}>
+        <input
+          type="text"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Type a topic…"
+          disabled={isStreaming}
+          className="flex-1 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
+        />
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={() => abortRef.current?.abort()}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-red/15 text-[#f87171] border border-[#f87171]/30 hover:bg-red/25 transition-all duration-200"
+            title="Stop"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="currentColor">
+              <rect x="3" y="3" width="8" height="8" rx="1" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent text-white disabled:opacity-30 hover:bg-[#6a58e8] transition-all duration-200 disabled:hover:bg-accent"
+            title="Send"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="2" x2="6" y2="8" />
+              <polygon points="12 2 8 12 6 8 2 6 12 2" />
+            </svg>
+          </button>
+        )}
+      </form>
     </div>
   )
 }
