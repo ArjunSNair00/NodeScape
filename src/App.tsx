@@ -109,9 +109,9 @@ export default function App() {
             onToggleTheme={toggleTheme}
           />
         ) : (
-          <div key="graph" className="absolute inset-0 flex">
-            {/* Graph area */}
-            <div className="relative flex-1">
+          <div key="graph" className="absolute inset-0">
+            {/* Graph area — fills the full container */}
+            <div className="relative w-full h-full">
               <Graph3D
                 ref={graphRef}
                 graphData={graphData}
@@ -145,33 +145,33 @@ export default function App() {
                   }
                 }}
               />
+
+              {/* Sidebar — overlays the graph, no longer a flex sibling that resizes the canvas */}
+              <Sidebar
+                open={sidebarOpen}
+                graphData={graphData}
+                originalGraphData={originalGraphData}
+                graphRef={graphRef}
+                onClose={() => setSidebarOpen(false)}
+                onGraphChange={handleGraphChange}
+                onSave={handleSave}
+                onGoHome={goHome}
+              />
+
+              {/* Page view overlay */}
+              <AnimatePresence>
+                {activePage && (
+                  <PageView
+                    node={activePage}
+                    nodeMap={Object.fromEntries(graphData.nodes.map(n => [n.id, n]))}
+                    onClose={() => setActivePage(null)}
+                    onNavigate={setActivePage}
+                    isEditMode={isEditMode}
+                    onUpdateNode={handleNodeUpdate}
+                  />
+                )}
+              </AnimatePresence>
             </div>
-
-            {/* Sidebar */}
-            <Sidebar
-              open={sidebarOpen}
-              graphData={graphData}
-              originalGraphData={originalGraphData}
-              graphRef={graphRef}
-              onClose={() => setSidebarOpen(false)}
-              onGraphChange={handleGraphChange}
-              onSave={handleSave}
-              onGoHome={goHome}
-            />
-
-            {/* Page view overlay */}
-            <AnimatePresence>
-              {activePage && (
-                <PageView
-                  node={activePage}
-                  nodeMap={Object.fromEntries(graphData.nodes.map(n => [n.id, n]))}
-                  onClose={() => setActivePage(null)}
-                  onNavigate={setActivePage}
-                  isEditMode={isEditMode}
-                  onUpdateNode={handleNodeUpdate}
-                />
-              )}
-            </AnimatePresence>
           </div>
         )}
       </AnimatePresence>

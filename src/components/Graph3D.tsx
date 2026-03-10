@@ -166,6 +166,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [showSavedToast, setShowSavedToast] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const isCommittingRef = useRef(false)
   
   const [editingTitle, setEditingTitle] = useState(false)
@@ -988,6 +989,86 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
+
+      {/* Clear Graph button */}
+      <button
+        onClick={() => setShowClearConfirm(true)}
+        className={`absolute top-14 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-[#f87171] hover:text-[#f87171] hover:bg-[#f87171]/10 transition-all duration-300 ${leftSidebarOpen ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'}`}
+        title="Clear Graph"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+          <path d="M10 11v6"></path>
+          <path d="M14 11v6"></path>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+        </svg>
+      </button>
+
+      {/* Clear Graph confirmation dialog */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 z-[200] flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setShowClearConfirm(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 10 }}
+              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+              className="relative mx-4 w-full max-w-xs rounded-2xl border border-border shadow-2xl p-6 flex flex-col gap-4"
+              style={{ background: 'var(--surface)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Icon */}
+              <div className="flex items-center justify-center w-11 h-11 rounded-full mx-auto" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.3)' }}>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                </svg>
+              </div>
+
+              {/* Text */}
+              <div className="text-center">
+                <p className="text-sm font-semibold text-text mb-1">Clear the entire graph?</p>
+                <p className="text-[11px] text-muted leading-relaxed">This will permanently remove all nodes and edges. This action cannot be undone.</p>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 py-2 text-[11px] tracking-widest text-muted2 border border-border2 rounded-lg hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    engineRef.current?.clearGraph()
+                    hovObjRef.current = null
+                    draggedNodeRef.current = null
+                    draggedLinkRef.current = null
+                    setShowClearConfirm(false)
+                  }}
+                  className="flex-1 py-2 text-[11px] tracking-widest text-white rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95"
+                  style={{ background: '#f87171' }}
+                >
+                  Clear
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div className="absolute top-0 left-16 right-0 px-6 py-4 flex items-center gap-2.5 z-20 pointer-events-none"
