@@ -131,8 +131,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const dragPlaneRef = useRef(new THREE.Plane())
   const raycasterRef = useRef(new THREE.Raycaster())
   const mouse2Ref    = useRef(new THREE.Vector2())
-  const tooltipRef   = useRef<HTMLDivElement>(null)
-  const previewRef   = useRef<HTMLDivElement>(null)
+  const tooltipRef         = useRef<HTMLDivElement>(null)
+  const previewRef         = useRef<HTMLDivElement>(null)
+  const previewNodeIdRef   = useRef<string | null>(null)  // which node is currently shown in the preview
+  const mouseOverPreviewRef = useRef(false)                // true while cursor is inside the preview div
+  const hidePreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const mouseRef    = useRef({ down: false, right: false, middle: false, shift: false, totalDist: 0, last: { x: 0, y: 0 }, start: { x: 0, y: 0 } })
   const autoRotEnabledRef = useRef(sessionStorage.getItem('idleRotate') !== 'false')
@@ -238,14 +241,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     if (!tt || !preview) return
 
     if (!hit) {
-      tt.style.opacity      = '0'
-      preview.style.opacity = '0'
+      tt.style.opacity = '0'
+      // Schedule a delayed hide — gives cursor time to cross the gap into the preview
+      if (!mouseOverPreviewRef.current && !hidePreviewTimerRef.current) {
+        hidePreviewTimerRef.current = setTimeout(() => {
+          hidePreviewTimerRef.current = null
+          if (!mouseOverPreviewRef.current && previewRef.current) {
+            previewRef.current.style.opacity = '0'
+            previewNodeIdRef.current = null
+          }
+        }, 350)
+      }
       return
+    }
+
+    // Cursor is over a node — cancel any pending hide
+    if (hidePreviewTimerRef.current) {
+      clearTimeout(hidePreviewTimerRef.current)
+      hidePreviewTimerRef.current = null
     }
 
     if (!hoverPreviewEnabledRef.current) {
       // ── Simple label tooltip (existing behaviour) ──────────────────────────
       preview.style.opacity = '0'
+      previewNodeIdRef.current = null
       tt.style.opacity = '1'
       tt.style.left = `${cx + 14}px`
       tt.style.top  = `${cy - 8}px`
@@ -260,33 +279,42 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       if ('node' in hit) {
         const node = hit.node
-        // Build inner HTML: header + divider + scrollable content
-        preview.innerHTML = [
-          `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">`,
-          `<span style="font-size:15px;line-height:1">${node.icon}</span>`,
-          `<strong style="font-size:11px;color:var(--text);letter-spacing:.04em;line-height:1.2">${node.label}</strong>`,
-          `</div>`,
-          `<div style="height:1px;background:var(--border);margin-bottom:7px"></div>`,
-          `<div style="font-size:10.5px;color:var(--muted2);line-height:1.65">${node.content || '<em>No content</em>'}</div>`,
-        ].join('')
+        const isSameNode = previewNodeIdRef.current === node.id
 
-        // Clamp position to viewport
-        const W = window.innerWidth, H = window.innerHeight
-        const pw = 264, ph = 220
-        const left = cx + 18 + pw > W ? cx - pw - 10 : cx + 18
-        const top  = cy - 8 + ph > H ? H - ph - 12  : cy - 8
+        if (!isSameNode) {
+          // New node — update content, reset scroll, reposition
+          preview.innerHTML = [
+            `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">`,
+            `<span style="font-size:15px;line-height:1">${node.icon}</span>`,
+            `<strong style="font-size:11px;color:var(--text);letter-spacing:.04em;line-height:1.2">${node.label}</strong>`,
+            `</div>`,
+            `<div style="height:1px;background:var(--border);margin-bottom:7px"></div>`,
+            `<div style="font-size:10.5px;color:var(--muted2);line-height:1.65">${node.content || '<em>No content</em>'}</div>`,
+          ].join('')
 
-        preview.style.left    = `${left}px`
-        preview.style.top     = `${top}px`
+          // Clamp position to viewport
+          const W = window.innerWidth, H = window.innerHeight
+          const pw = 264, ph = 220
+          const left = cx + 18 + pw > W ? cx - pw - 10 : cx + 18
+          const top  = cy - 8 + ph > H ? H - ph - 12  : cy - 8
+
+          preview.style.left = `${left}px`
+          preview.style.top  = `${top}px`
+          preview.scrollTop  = 0
+          previewNodeIdRef.current = node.id
+        }
+        // Whether same or new node, ensure it's visible
         preview.style.opacity = '1'
-        preview.scrollTop     = 0
       } else {
         // Edge hover — fall back to simple tooltip
         tt.style.left    = `${cx + 14}px`
         tt.style.top     = `${cy - 8}px`
         tt.textContent   = `${hit.source.label} ↔ ${hit.target.label}`
         tt.style.opacity = '1'
-        preview.style.opacity = '0'
+        if (!mouseOverPreviewRef.current) {
+          preview.style.opacity = '0'
+          previewNodeIdRef.current = null
+        }
       }
     }
   }, [])
@@ -1321,18 +1349,35 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         style={{ background: tooltipBg }}
       />
 
-      {/* Rich hover preview popup */}
+      {/* Rich hover preview popup — pointer-events-auto so the user can scroll it */}
       <div
         ref={previewRef}
-        className="fixed pointer-events-none opacity-0 z-[1001] rounded-xl border border-border shadow-2xl backdrop-blur-md overflow-y-auto"
+        onMouseEnter={() => {
+          mouseOverPreviewRef.current = true
+          // Cancel any pending hide — cursor made it to the preview
+          if (hidePreviewTimerRef.current) {
+            clearTimeout(hidePreviewTimerRef.current)
+            hidePreviewTimerRef.current = null
+          }
+        }}
+        onMouseLeave={() => {
+          mouseOverPreviewRef.current = false
+          // Short delay before hiding so small jitter doesn't flicker it
+          hidePreviewTimerRef.current = setTimeout(() => {
+            hidePreviewTimerRef.current = null
+            if (previewRef.current) previewRef.current.style.opacity = '0'
+            previewNodeIdRef.current = null
+          }, 120)
+        }}
+        className="fixed opacity-0 z-[1001] rounded-xl border border-border shadow-2xl backdrop-blur-md overflow-y-auto"
         style={{
           background: tooltipBg,
           width: '264px',
           maxHeight: '220px',
           padding: '10px 12px',
           transition: 'opacity 0.12s ease',
-          // Custom thin scrollbar
           scrollbarWidth: 'thin',
+          cursor: 'default',
         }}
       />
     </div>
