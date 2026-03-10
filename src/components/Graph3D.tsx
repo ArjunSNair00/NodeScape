@@ -133,6 +133,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const mouse2Ref    = useRef(new THREE.Vector2())
   const tooltipRef         = useRef<HTMLDivElement>(null)
   const previewRef         = useRef<HTMLDivElement>(null)
+  const plusRef            = useRef<HTMLDivElement>(null) // '+' badge for manual mode
   const previewNodeIdRef   = useRef<string | null>(null)  // which node is currently shown in the preview
   const mouseOverPreviewRef = useRef(false)                // true while cursor is inside the preview div
   const hidePreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -142,6 +143,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const autoRotRef  = useRef(autoRotEnabledRef.current)
   const edgeHoverEnabledRef = useRef(sessionStorage.getItem('edgeHover') === 'true')
   const continuousPhysicsEnabledRef = useRef(sessionStorage.getItem('continuousPhysics') !== 'false')
+  const manualModeEnabledRef = useRef(false)
   const edgeDragEnabledRef = useRef(sessionStorage.getItem('edgeDrag') === 'true')
   const nodeIconsEnabledRef = useRef(sessionStorage.getItem('showNodeIcons') !== 'false')
   const lockCameraEnabledRef = useRef(sessionStorage.getItem('lockCamera') !== 'false')
@@ -173,6 +175,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const [showSavedToast, setShowSavedToast] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [hoverPreviewOn, setHoverPreviewOn] = useState(() => sessionStorage.getItem('hoverPreview') === 'true')
+  const [isManualMode, setIsManualMode] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, hitNodeId: string | null }>({ visible: false, x: 0, y: 0, hitNodeId: null })
   const isCommittingRef = useRef(false)
   
   const [editingTitle, setEditingTitle] = useState(false)
@@ -238,10 +242,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const showTooltip = useCallback((cx: number, cy: number, hit: NodeObj | LinkObj | null) => {
     const tt      = tooltipRef.current
     const preview = previewRef.current
-    if (!tt || !preview) return
+    const plus    = plusRef.current
+    if (!tt || !preview || !plus) return
 
     if (!hit) {
-      tt.style.opacity = '0'
+      tt.style.opacity   = '0'
+      plus.style.opacity = '0'
       // Schedule a delayed hide — gives cursor time to cross the gap into the preview
       if (!mouseOverPreviewRef.current && !hidePreviewTimerRef.current) {
         hidePreviewTimerRef.current = setTimeout(() => {
@@ -259,6 +265,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     if (hidePreviewTimerRef.current) {
       clearTimeout(hidePreviewTimerRef.current)
       hidePreviewTimerRef.current = null
+    }
+
+    // Manual mode "+" indicator
+    if (manualModeEnabledRef.current && 'node' in hit) {
+      plus.style.left = `${cx + 20}px`
+      plus.style.top  = `${cy - 20}px`
+      plus.style.opacity = '1'
+    } else {
+      plus.style.opacity = '0'
     }
 
     if (!hoverPreviewEnabledRef.current) {
@@ -639,12 +654,40 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
     const onMouseUp = (e: MouseEvent) => {
       const m = mouseRef.current
-      if (!m.right && !m.shift && m.totalDist < 5) {
-        let doubleClickedSprite = false
-        const now = Date.now()
-        
-        // Raycast against label sprites for double-click rename
-        const rect = canvas.getBoundingClientRect()
+      if (m.totalDist < 5) {
+        if (m.right) {
+          if (manualModeEnabledRef.current) {
+            const hit = getHit(e.clientX, e.clientY)
+            setContextMenu({
+              visible: true,
+              x: e.clientX,
+              y: e.clientY,
+              hitNodeId: hit && 'node' in hit ? hit.node.id : null
+            })
+          }
+        } else if (!m.shift) {
+          // Left click
+          if (manualModeEnabledRef.current) {
+            // Close context menu regardless
+            setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+            
+            const hit = getHit(e.clientX, e.clientY)
+            if (hit && 'node' in hit) {
+              const id = crypto.randomUUID()
+              engineRef.current?.addNode({ id, label: 'New Node', hex: '#ffffff', category: 'concept', icon: '📄', content: '', connections: [hit.node.id] })
+              engineRef.current?.addEdge(hit.node.id, id)
+              setRenamer({ id, label: '', cx: e.clientX, cy: e.clientY })
+            }
+          } else {
+            // Standard double-click rename & click-to-open logic
+            let doubleClickedSprite = false
+            const now = Date.now()
+            
+            // Close context menu if open
+            setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+            
+            // Raycast against label sprites for double-click rename
+            const rect = canvas.getBoundingClientRect()
         mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
         mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
         raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
@@ -671,9 +714,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           }
         }
 
-        if (!doubleClickedSprite) {
-          const hit = getHit(e.clientX, e.clientY)
-          if (hit && 'node' in hit) onOpenPage(hit.node)
+            if (!doubleClickedSprite) {
+              const hit = getHit(e.clientX, e.clientY)
+              if (hit && 'node' in hit) onOpenPage(hit.node)
+            }
+          }
         }
       }
       draggedNodeRef.current = null
@@ -1280,6 +1325,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
+        {/* Manual Graph Mode toggle */}
+        <button
+          onClick={() => {
+            const next = !manualModeEnabledRef.current
+            manualModeEnabledRef.current = next
+            setIsManualMode(next)
+            if (!next) {
+              setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+              if (plusRef.current) plusRef.current.style.opacity = '0'
+            }
+          }}
+          title={isManualMode ? 'Manual Build Mode: ON' : 'Manual Build Mode: OFF'}
+          className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            isManualMode
+              ? 'border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]'
+              : 'border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
+          }`}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </button>
+
         {/* Hover Preview toggle */}
         <button
           onClick={() => {
@@ -1387,6 +1456,87 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           cursor: 'default',
         }}
       />
+
+      {/* Manual Mode '+' indicator */}
+      <div ref={plusRef}
+        className="fixed pointer-events-none opacity-0 z-[1002] transition-opacity duration-100 flex items-center justify-center w-5 h-5 rounded-full bg-accent text-white shadow-[0_0_10px_rgba(124,106,247,0.5)]"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </div>
+
+      {/* Manual Mode Context Menu */}
+      <AnimatePresence>
+        {contextMenu.visible && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.1 }}
+            className="fixed z-[1500] origin-top-left overflow-hidden rounded-xl border border-border2 shadow-2xl backdrop-blur-xl py-1 w-44"
+            style={{ 
+              background: isDark ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+              left: Math.min(contextMenu.x, window.innerWidth - 180), // Clamp to screen
+              top: Math.min(contextMenu.y, window.innerHeight - 150)
+            }}
+          >
+            <button
+              onClick={() => {
+                const id = crypto.randomUUID()
+                engineRef.current?.addNode({ id, label: 'New Node', hex: '#ffffff', category: 'concept', icon: '📄', content: '', connections: contextMenu.hitNodeId ? [contextMenu.hitNodeId] : [] })
+                if (contextMenu.hitNodeId) engineRef.current?.addEdge(contextMenu.hitNodeId, id)
+                setRenamer({ id, label: '', cx: contextMenu.x, cy: contextMenu.y })
+                setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+              }}
+              className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+            >
+              Add Node
+            </button>
+            
+            {contextMenu.hitNodeId && (
+              <>
+                <button
+                  onClick={() => {
+                    const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
+                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y })
+                    setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                  }}
+                  className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+                >
+                  Rename Node
+                </button>
+                <button
+                  onClick={() => {
+                    const node = engineRef.current?.simNodes.find(n => n.id === contextMenu.hitNodeId)
+                    if (node && engineRef.current) {
+                      // Bright vibrant colours
+                      const colours = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6', '#2dd4bf', '#a3e635']
+                      const newColor = colours[Math.floor(Math.random() * colours.length)]
+                      engineRef.current.updateNode({ ...node, hex: newColor })
+                    }
+                    setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                  }}
+                  className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+                >
+                  Change Colour
+                </button>
+                <div className="h-[1px] bg-border2 my-1 mx-2" />
+                <button
+                  onClick={() => {
+                    engineRef.current?.removeNode(contextMenu.hitNodeId as string)
+                    setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                  }}
+                  className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-red-500 hover:bg-red-500/10 transition-colors"
+                >
+                  Delete Node
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

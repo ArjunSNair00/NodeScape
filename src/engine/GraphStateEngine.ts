@@ -30,8 +30,8 @@ import {
  */
 export class GraphStateEngine {
   // ─── live sim arrays (shared with Graph3D refs) ────────────────────────────
-  private simNodes: SimNode[] = []
-  private simLinks: SimLink[] = []
+  public simNodes: SimNode[] = []
+  public simLinks: SimLink[] = []
 
   // ─── Three.js scene objects ────────────────────────────────────────────────
   private nodeObjs: NodeObj[] = []
