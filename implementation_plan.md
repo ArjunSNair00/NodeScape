@@ -1,28 +1,33 @@
 implement this, but node name should be changed (along with json in all tabs) when double clicking on the text label, not the 3d sphere:
+f
 
 # Three UI Features Plan
 
 ## 1 — Reset Graph Button (Controls Tab)
 
-**Goal**: A "Reset" button with two checkboxes: *Positions* and *Colors*. Resets the graph to its original generated state.
+**Goal**: A "Reset" button with two checkboxes: _Positions_ and _Colors_. Resets the graph to its original generated state.
 
 **Approach**: Store `originalGraphData` in [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx) whenever a new graph is loaded/generated. Pass it down to [ControlsTab](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx#122-347) via [Sidebar](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx#28-121). The reset button calls a new imperative handle method `resetGraph(opts)`.
 
 ### Proposed Changes
 
 #### [MODIFY] [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx)
+
 - Add `originalGraphData` ref — updated whenever `setGraphData` is called from [handleOpen](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx#27-35) or [handleGraphChange](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx#55-62) (but NOT from [handleNodeUpdate](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx#63-77) or auto-saves)
 - Pass `originalGraphData` to `<Sidebar>`
 
 #### [MODIFY] [Sidebar.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx)
+
 - Add `originalGraphData?: GraphData` prop, thread it to [ControlsTab](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx#122-347)
 - In [ControlsTab](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx#122-347): add `resetPositions` / `resetColors` checkbox state + Reset button UI
 - On click: call `graphRef.current.resetGraph({ positions: resetPositions, colors: resetColors })`
 
 #### [MODIFY] [types/graph.ts](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/types/graph.ts)
+
 - Add `resetGraph(opts: { positions: boolean; colors: boolean }, original: GraphData) => void` to [GraphHandle](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/types/graph.ts#77-91)
 
 #### [MODIFY] [Graph3D.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Graph3D.tsx)
+
 - Add `resetGraph` to `useImperativeHandle`: loops `simNodes`, overwriting `x/y/z` (from original `NodeData.position` or falls back to scatter) and/or `hex/color` from original nodes. Then calls `engine.resetPhysics()`.
 
 ---
@@ -36,6 +41,7 @@ implement this, but node name should be changed (along with json in all tabs) wh
 ### Proposed Changes
 
 #### [MODIFY] [Graph3D.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Graph3D.tsx)
+
 - Add `onNodeRename?: (id: string, label: string) => void` prop
 - Add `lastClickRef` with time + nodeId to detect double-click (300ms window) in [onMouseUp](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Graph3D.tsx#533-546)
 - Add `renamingNode` state: `{ id, label, screenX, screenY } | null`
@@ -44,10 +50,12 @@ implement this, but node name should be changed (along with json in all tabs) wh
 - After rename, rebuild only this node's sprite via `engine.updateNode()`
 
 #### [MODIFY] [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx)
+
 - Pass `onNodeRename={(id, label) => handleNodeUpdate({...node, label})}` to `<Graph3D>`
   - Look up the full node from `graphData` first
 
 #### [MODIFY] [types/graph.ts](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/types/graph.ts)
+
 - Add `onNodeRename?: (id: string, label: string) => void` to [Props](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/Sidebar.tsx#7-16) in Graph3D
 
 ---
@@ -61,6 +69,7 @@ implement this, but node name should be changed (along with json in all tabs) wh
 ### Proposed Changes
 
 #### [MODIFY] [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx)
+
 - Remove `style={{ marginRight: sidebarOpen ? 400 : 0 }}` and `transition-all duration-[350ms]` className from the graph container `<div>`
 
 ---
