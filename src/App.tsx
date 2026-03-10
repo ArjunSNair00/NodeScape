@@ -17,6 +17,7 @@ export default function App() {
 
   const [view, setView] = useState<View>('home')
   const [graphData, setGraphData]     = useState<GraphData>(DEFAULT_GRAPH)
+  const [originalGraphData, setOriginalGraphData] = useState<GraphData>(DEFAULT_GRAPH)
   const [currentId, setCurrentId]     = useState<string | undefined>(undefined)
   const [activePage, setActivePage]   = useState<NodeData | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -27,6 +28,7 @@ export default function App() {
   // Open a saved record (or demo)
   const handleOpen = (record: GraphRecord) => {
     setGraphData(record.data)
+    setOriginalGraphData(record.data)
     setCurrentId(record.id === '__demo__' ? undefined : record.id)
     setActivePage(null)
     setSidebarOpen(false)
@@ -35,7 +37,9 @@ export default function App() {
 
   // Create a brand-new blank graph (open with default, unsaved)
   const handleCreate = () => {
-    setGraphData({ title: 'New Graph', nodes: [] })
+    const newData = { title: 'New Graph', nodes: [] }
+    setGraphData(newData)
+    setOriginalGraphData(newData)
     setCurrentId(undefined)
     setActivePage(null)
     setSidebarOpen(true)
@@ -55,6 +59,7 @@ export default function App() {
   // When AI data generates a new graph — also auto-save it
   const handleGraphChange = (data: GraphData) => {
     setGraphData(data)
+    setOriginalGraphData(data)
     // auto-save whenever graph data is replaced via paste
     const id = saveGraph(data, currentId)
     setCurrentId(id)
@@ -76,6 +81,14 @@ export default function App() {
   }
 
   const goHome = () => {
+    // Auto-save the current graph (with live drag positions) before leaving the view.
+    // This ensures that even without an explicit Save click, positions are preserved.
+    if (graphRef.current) {
+      const fresh = graphRef.current.getFreshData()
+      if (fresh.nodes.length > 0) {
+        saveGraph(fresh, currentId)
+      }
+    }
     setActivePage(null)
     setSidebarOpen(false)
     setView('home')
@@ -98,10 +111,7 @@ export default function App() {
         ) : (
           <div key="graph" className="absolute inset-0 flex">
             {/* Graph area */}
-            <div
-              className="relative flex-1 transition-all duration-[350ms] ease-[cubic-bezier(.4,0,.2,1)]"
-              style={{ marginRight: sidebarOpen ? 400 : 0 }}
-            >
+            <div className="relative flex-1">
               <Graph3D
                 ref={graphRef}
                 graphData={graphData}
@@ -117,6 +127,10 @@ export default function App() {
                 onRename={(title: string) => {
                   setGraphData(d => ({ ...d, title }))
                 }}
+                onNodeRename={(id: string, label: string) => {
+                  const node = graphData.nodes.find(n => n.id === id)
+                  if (node) handleNodeUpdate({ ...node, label })
+                }}
               />
             </div>
 
@@ -124,6 +138,7 @@ export default function App() {
             <Sidebar
               open={sidebarOpen}
               graphData={graphData}
+              originalGraphData={originalGraphData}
               graphRef={graphRef}
               onClose={() => setSidebarOpen(false)}
               onGraphChange={handleGraphChange}

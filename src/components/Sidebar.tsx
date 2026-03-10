@@ -7,6 +7,7 @@ import { parseGraphJSON } from '../lib/validateGraph'
 interface Props {
   open: boolean
   graphData: GraphData
+  originalGraphData?: GraphData
   graphRef: React.RefObject<GraphHandle | null>
   onClose: () => void
   onGraphChange: (data: GraphData) => void
@@ -25,7 +26,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'info',     label: 'INFO'     },
 ]
 
-export default function Sidebar({ open, graphData, graphRef, onClose, onGraphChange, onSave, onGoHome }: Props) {
+export default function Sidebar({ open, graphData, originalGraphData, graphRef, onClose, onGraphChange, onSave, onGoHome }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('ai')
   const [copied, setCopied] = useState(false)
   const [jsonInput, setJsonInput] = useState('')
@@ -110,7 +111,7 @@ export default function Sidebar({ open, graphData, graphRef, onClose, onGraphCha
             {activeTab === 'prompt'   && <PromptTab copied={copied} onCopy={handleCopyPrompt} />}
             {activeTab === 'paste'    && <PasteTab value={jsonInput} onChange={setJsonInput} error={error} onGenerate={handleGenerate} />}
             {activeTab === 'editor'   && <DataEditTab graphData={graphData} onGraphChange={onGraphChange} />}
-            {activeTab === 'controls' && <ControlsTab graphRef={graphRef} />}
+            {activeTab === 'controls' && <ControlsTab graphRef={graphRef} originalGraphData={originalGraphData} />}
             {activeTab === 'info'     && <InfoTab graphData={graphData} linkCount={linkCount} />}
           </div>
         </motion.div>
@@ -120,14 +121,18 @@ export default function Sidebar({ open, graphData, graphRef, onClose, onGraphCha
 }
 
 // ── Controls Tab ──────────────────────────────────────────────────────────────
-function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | null> }) {
+function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObject<GraphHandle | null>, originalGraphData?: GraphData }) {
   const [jiggling, setJiggling] = useState(false)
+  const [physicsOffWarning, setPhysicsOffWarning] = useState(false)
   const [labelLevel, setLabelLevel] = useState(() => Number(sessionStorage.getItem('labelLevel') || 5)) // 1–9, 5 = default (×1.0)
   const [drawLevel, setDrawLevel] = useState(() => Number(sessionStorage.getItem('drawLevel') || 5)) // 1-9, 5 = default
   const [idleRotate, setIdleRotate] = useState(() => sessionStorage.getItem('idleRotate') !== 'false')
   const [edgeHover, setEdgeHover] = useState(() => sessionStorage.getItem('edgeHover') === 'true')
   const [continuousPhysics, setContinuousPhysics] = useState(() => sessionStorage.getItem('continuousPhysics') === 'true')
   const [edgeDrag, setEdgeDrag] = useState(() => sessionStorage.getItem('edgeDrag') === 'true')
+
+  const [resetPositions, setResetPositions] = useState(true)
+  const [resetColors, setResetColors] = useState(true)
 
   useEffect(() => {
     sessionStorage.setItem('labelLevel', labelLevel.toString())
@@ -141,9 +146,21 @@ function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | nul
   const g = () => graphRef.current
 
   const handleJiggle = () => {
+    // If physics is off, show a warning instead of jigging
+    if (!g()?.isContinuousPhysicsEnabled()) {
+      setPhysicsOffWarning(true)
+      setTimeout(() => setPhysicsOffWarning(false), 2500)
+      return
+    }
     g()?.jiggle()
     setJiggling(true)
     setTimeout(() => setJiggling(false), 1200)
+  }
+
+  const handleReset = () => {
+    if (g() && originalGraphData) {
+      g()?.resetGraph({ positions: resetPositions, colors: resetColors }, originalGraphData)
+    }
   }
 
   const changeLabel = (delta: number) => {
@@ -170,13 +187,16 @@ function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | nul
     </div>
   )
 
-  const ActionBtn = ({ onClick, children, active, wide }: { onClick: () => void; children: React.ReactNode; active?: boolean; wide?: boolean }) => (
+  const ActionBtn = ({ onClick, children, active, wide, disabled }: { onClick: () => void; children: React.ReactNode; active?: boolean; wide?: boolean; disabled?: boolean }) => (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={`flex items-center justify-center gap-1.5 text-[10px] tracking-widest border rounded-lg transition-all duration-200 active:scale-95 ${wide ? 'px-4 py-2' : 'w-9 h-9'} ${
-        active
-          ? 'border-accent text-accent bg-accent/15'
-          : 'border-border2 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
+        disabled
+          ? 'opacity-50 cursor-not-allowed border-border2 text-muted2'
+          : active
+            ? 'border-accent text-accent bg-accent/15'
+            : 'border-border2 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
       }`}
     >
       {children}
@@ -192,6 +212,35 @@ function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | nul
           <span className={jiggling ? 'animate-spin inline-block' : ''}>✦</span>
           {jiggling ? 'Jiggling…' : 'Jiggle!'}
         </ActionBtn>
+      </BtnRow>
+
+      {/* Physics-off warning */}
+      {physicsOffWarning && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#f87171]/10 border border-[#f87171]/30 text-[#f87171] text-[10px] tracking-wide -mt-1 mb-1 animate-pulse">
+          <span>⚡</span>
+          <span>Enable Physics first to use Jiggle</span>
+        </div>
+      )}
+
+      <BtnRow label="Reset graph">
+        <div className="flex flex-col gap-2 w-full">
+          <div className="flex items-center gap-4 px-1">
+            <label className="flex items-center gap-1.5 text-[10px] text-muted2 cursor-pointer hover:text-text transition-colors">
+              <input type="checkbox" checked={resetPositions} onChange={e => setResetPositions(e.target.checked)} className="accent-accent" />
+              Positions
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] text-muted2 cursor-pointer hover:text-text transition-colors">
+              <input type="checkbox" checked={resetColors} onChange={e => setResetColors(e.target.checked)} className="accent-accent" />
+              Colors
+            </label>
+          </div>
+          <ActionBtn onClick={handleReset} wide disabled={!originalGraphData || (!resetPositions && !resetColors)}>
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M2.5 6a3.5 3.5 0 111.025 2.475M2.5 6V3.5M2.5 6h2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Reset to Original
+          </ActionBtn>
+        </div>
       </BtnRow>
 
       <BtnRow label="Randomize positions">
@@ -234,7 +283,7 @@ function ControlsTab({ graphRef }: { graphRef: React.RefObject<GraphHandle | nul
         </ActionBtn>
       </BtnRow>
 
-      <BtnRow label="Continuous Physics">
+      <BtnRow label="Physics">
         <ActionBtn onClick={() => setContinuousPhysics(g()?.toggleContinuousPhysics() ?? false)} wide active={continuousPhysics}>
           <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M2 10s1.5-3 4-3 4 3 4 3M2 6s2-3 4-3 4 3 4 3" strokeLinecap="round" strokeLinejoin="round" />

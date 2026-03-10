@@ -15,6 +15,8 @@ export interface NodeData {
   vx?: number
   vy?: number
   vz?: number
+  /** Persisted 3D position — written by getGraphData(), read by load() */
+  position?: { x: number; y: number; z: number }
 }
 
 export interface GraphData {
@@ -81,7 +83,9 @@ export interface GraphHandle {
   toggleAutoRotate: () => boolean
   toggleEdgeHover: () => boolean
   toggleContinuousPhysics: () => boolean
+  isContinuousPhysicsEnabled: () => boolean
   toggleEdgeDrag: () => boolean
   triggerSaveToast: () => void
   getFreshData: () => GraphData
+  resetGraph: (opts: { positions: boolean; colors: boolean }, original: GraphData) => void
 }

@@ -7,6 +7,7 @@ import {
   runPhysics, syncPositions, setHoveredNode, applyCam, buildLabelSprite, hexToInt,
 } from '../lib/graphBuilder'
 import { Theme, themeBgInt, themeFogColor } from '../hooks/useTheme'
+import { GraphStateEngine } from '../engine/GraphStateEngine'
 
 interface Props {
   graphData: GraphData
@@ -20,6 +21,7 @@ interface Props {
   onGoHome: () => void
   onSave: () => void
   onRename?: (title: string) => void
+  onNodeRename?: (id: string, label: string) => void
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -100,7 +102,7 @@ function DPad({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sidebarOpen, isEditMode, theme, onOpenPage, onToggleSidebar, onToggleEditMode, onToggleTheme, onGoHome, onSave, onRename }, ref) {
+const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sidebarOpen, isEditMode, theme, onOpenPage, onToggleSidebar, onToggleEditMode, onToggleTheme, onGoHome, onSave, onRename, onNodeRename }, ref) {
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -116,6 +118,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const simNodesRef    = useRef<SimNode[]>([])
   const simLinksRef    = useRef<SimLink[]>([])
   const simTickRef     = useRef(0)
+  const engineRef      = useRef<GraphStateEngine | null>(null)
   const hovObjRef      = useRef<NodeObj | LinkObj | null>(null)
   const draggedNodeRef = useRef<SimNode | null>(null)
   const draggedLinkRef = useRef<LinkObj | null>(null)
@@ -141,6 +144,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const tRef           = useRef(0)
   const labelMultRef   = useRef(0.3 + ((Number(sessionStorage.getItem('labelLevel') || 5) - 1) / 8) * 1.9)        // user-adjustable label scale multiplier
   const jigglingRef    = useRef(false)    // true while jiggle animation running
+
+  const [renamer, setRenamer] = useState<{ id: string, label: string, cx: number, cy: number } | null>(null)
+  const clickRef = useRef<{ time: number, id: string | null }>({ time: 0, id: null })
 
   // Held arrow keys: each key maps to how long it's been held (for acceleration)
   const heldKeysRef = useRef<Set<string>>(new Set())
@@ -263,29 +269,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
   // ── rebuild graph when data changes ──────────────────────────────────────────
   useEffect(() => {
-    const scene = sceneRef.current
-    if (!scene) return
-
-    const prevIds = simNodesRef.current.map(n => n.id).join(',')
-    const newIds = graphData.nodes.map(n => n.id).join(',')
-    const structureChanged = prevIds !== newIds
-
-    clearSceneObjects(scene, nodeObjsRef.current, linkObjsRef.current)
-    const simNodes = initSimNodes(graphData)
-    const linksRaw = buildLinksRaw(graphData)
-    const simLinks: SimLink[] = linksRaw
-      .map(l => ({ source: simNodes.find(n => n.id === l.a)!, target: simNodes.find(n => n.id === l.b)! }))
-      .filter(l => l.source && l.target)
-    const { nodeObjs, linkObjs } = buildSceneObjects(scene, simNodes, simLinks)
-    
-    simNodesRef.current = simNodes; simLinksRef.current = simLinks
-    nodeObjsRef.current = nodeObjs; linkObjsRef.current = linkObjs
-    
-    if (structureChanged) {
-      simTickRef.current = 0; 
-      hovObjRef.current = null; 
-      draggedNodeRef.current = null
-    }
+    if (!engineRef.current) return   // engine not yet created (mount effect runs after)
+    engineRef.current.load(graphData)
+    hovObjRef.current    = null
+    draggedNodeRef.current = null
   }, [graphData])
 
   // ── mount Three.js once ───────────────────────────────────────────────────────
@@ -312,14 +299,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     const pLight = new THREE.PointLight(0x8877ff, 3, 800); scene.add(pLight); pLightRef.current = pLight
     const pLight2 = new THREE.PointLight(0x44aaff, 1.5, 600); scene.add(pLight2); pLight2Ref.current = pLight2
 
-    const simNodes = initSimNodes(graphData)
-    const linksRaw = buildLinksRaw(graphData)
-    const simLinks: SimLink[] = linksRaw
-      .map(l => ({ source: simNodes.find(n => n.id === l.a)!, target: simNodes.find(n => n.id === l.b)! }))
-      .filter(l => l.source && l.target)
-    const { nodeObjs, linkObjs } = buildSceneObjects(scene, simNodes, simLinks)
-    simNodesRef.current = simNodes; simLinksRef.current = simLinks
-    nodeObjsRef.current = nodeObjs; linkObjsRef.current = linkObjs
+    // ── Create and initialise the engine ─────────────────────────────────────
+    const engine = new GraphStateEngine(
+      scene,
+      simNodesRef,
+      simLinksRef,
+      nodeObjsRef,
+      linkObjsRef,
+      simTickRef,
+    )
+    engineRef.current = engine
+    engine.load(graphData)
 
     resize()
 
@@ -347,10 +337,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         }
       }
 
-      if (simTickRef.current < 500) {
-        runPhysics(simNodesRef.current, simLinksRef.current, simTickRef.current, draggedNodeRef.current?.id)
-        simTickRef.current++
-      }
+      // ── physics tick (delegated to engine) ────────────────────────────────
+      engineRef.current?.tick(draggedNodeRef.current?.id)
       syncPositions(nodeObjsRef.current, linkObjsRef.current, sphRef.current, labelMultRef.current)
 
       nodeObjsRef.current.forEach((o, i) => {
@@ -457,7 +445,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               new THREE.Vector3(hit.node.x, hit.node.y, hit.node.z)
             )
             canvas.style.cursor = 'grabbing'
-            if (continuousPhysicsEnabledRef.current) simTickRef.current = 0
+            if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
           } else if ('source' in hit && edgeDragEnabledRef.current) {
             draggedLinkRef.current = hit
             const camDir = new THREE.Vector3()
@@ -472,7 +460,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             )
             draggedLinkDragPtRef.current = null
             canvas.style.cursor = 'grabbing'
-            if (continuousPhysicsEnabledRef.current) simTickRef.current = 0
+            if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
           }
         }
       }
@@ -487,7 +475,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       if (m.down) {
         if (continuousPhysicsEnabledRef.current && (draggedNodeRef.current || draggedLinkRef.current)) {
-          simTickRef.current = 0
+          engineRef.current?.resetPhysics()
         }
 
         if (draggedNodeRef.current || draggedLinkRef.current) {
@@ -549,8 +537,41 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     const onMouseUp = (e: MouseEvent) => {
       const m = mouseRef.current
       if (!m.right && !m.shift && m.totalDist < 5) {
-        const hit = getHit(e.clientX, e.clientY)
-        if (hit && 'node' in hit) onOpenPage(hit.node)
+        let doubleClickedSprite = false
+        const now = Date.now()
+        
+        // Raycast against label sprites for double-click rename
+        const rect = canvas.getBoundingClientRect()
+        mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+        mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+        raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
+        
+        const sprites = nodeObjsRef.current.map(o => o.node._sprite).filter(Boolean) as THREE.Sprite[]
+        if (sprites.length > 0) {
+          const sHits = raycasterRef.current.intersectObjects(sprites)
+          if (sHits.length > 0) {
+            const hitSprite = sHits[0].object
+            const matchObj = nodeObjsRef.current.find(o => o.node._sprite === hitSprite)
+            if (matchObj) {
+              const id = matchObj.node.id
+              if (clickRef.current.id === id && now - clickRef.current.time < 350) {
+                // Double click!
+                doubleClickedSprite = true
+                setRenamer({ id, label: matchObj.node.label, cx: e.clientX, cy: e.clientY })
+                clickRef.current = { time: 0, id: null }
+              } else {
+                clickRef.current = { time: now, id }
+              }
+            }
+          } else {
+            clickRef.current = { time: 0, id: null }
+          }
+        }
+
+        if (!doubleClickedSprite) {
+          const hit = getHit(e.clientX, e.clientY)
+          if (hit && 'node' in hit) onOpenPage(hit.node)
+        }
       }
       draggedNodeRef.current = null
       draggedLinkRef.current = null
@@ -612,7 +633,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             const camDir = new THREE.Vector3()
             cameraRef.current!.getWorldDirection(camDir)
             dragPlaneRef.current.setFromNormalAndCoplanarPoint(camDir, new THREE.Vector3(hit.node.x, hit.node.y, hit.node.z))
-            if (continuousPhysicsEnabledRef.current) simTickRef.current = 0
+            if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
           } else if ('source' in hit && edgeDragEnabledRef.current) {
             draggedLinkRef.current = hit
             const camDir = new THREE.Vector3()
@@ -622,7 +643,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               new THREE.Vector3((hit.source.x + hit.target.x) / 2, (hit.source.y + hit.target.y) / 2, (hit.source.z + hit.target.z) / 2)
             )
             draggedLinkDragPtRef.current = null
-            if (continuousPhysicsEnabledRef.current) simTickRef.current = 0
+            if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
           }
         }
       }
@@ -641,7 +662,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         tr.last[0] = { x: e.touches[0].clientX, y: e.touches[0].clientY }
 
         if (continuousPhysicsEnabledRef.current && (draggedNodeRef.current || draggedLinkRef.current)) {
-          simTickRef.current = 0
+          engineRef.current?.resetPhysics()
         }
 
         if (draggedNodeRef.current || draggedLinkRef.current) {
@@ -744,8 +765,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         n.vy += (Math.random() - 0.5) * force
         n.vz += (Math.random() - 0.5) * force
       })
-      // Restart physics for a bit
-      simTickRef.current = Math.max(0, simTickRef.current - 120)
+      // Restart physics for a bit via the engine so the internal tick counter resets
+      engineRef.current?.resetPhysics(120)
       setTimeout(() => { jigglingRef.current = false }, 1200)
     },
 
@@ -757,7 +778,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         n.z = (Math.random() - 0.5) * R * 2
         n.vx = n.vy = n.vz = 0
       })
-      simTickRef.current = 0   // restart physics from new positions
+      engineRef.current?.resetPhysics()   // full restart from new positions
     },
 
     randomizeColors() {
@@ -810,6 +831,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
     toggleContinuousPhysics() {
       continuousPhysicsEnabledRef.current = !continuousPhysicsEnabledRef.current
+      // When enabling physics, give it a gentle kick so it wakes up immediately
+      if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics(60)
+      return continuousPhysicsEnabledRef.current
+    },
+
+    isContinuousPhysicsEnabled() {
       return continuousPhysicsEnabledRef.current
     },
 
@@ -824,19 +851,49 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     },
 
     getFreshData() {
-      const freshNodes = simNodesRef.current.map(n => ({
-        id: n.id,
-        label: n.label,
-        icon: n.icon,
-        hex: n.hex,
-        category: n.category,
-        content: n.content,
-        connections: n.connections,
-        color: n.color,
-        x: n.x, y: n.y, z: n.z,
-        vx: n.vx, vy: n.vy, vz: n.vz,
-      }))
-      return { ...graphData, nodes: freshNodes }
+      return engineRef.current?.getGraphData() ?? graphData
+    },
+
+    resetGraph(opts: { positions: boolean; colors: boolean }, original: GraphData) {
+      if (opts.positions) {
+        simNodesRef.current.forEach(n => {
+          const orig = original.nodes.find(o => o.id === n.id)
+          if (orig && orig.position) {
+            n.x = orig.position.x
+            n.y = orig.position.y
+            n.z = orig.position.z
+          } else {
+            const R = 200
+            n.x = (Math.random() - 0.5) * R * 2
+            n.y = (Math.random() - 0.5) * R * 2
+            n.z = (Math.random() - 0.5) * R * 2
+          }
+          n.vx = n.vy = n.vz = 0
+        })
+      }
+      if (opts.colors) {
+        const scene = sceneRef.current
+        simNodesRef.current.forEach(n => {
+          const orig = original.nodes.find(o => o.id === n.id)
+          if (orig && orig.hex) {
+            n.hex = orig.hex
+            n.color = hexToInt(orig.hex)
+          }
+        })
+        if (scene) {
+          nodeObjsRef.current.forEach(o => {
+            const col = new THREE.Color(o.node.hex)
+            o.mat.color.set(col)
+            o.mat.emissive.set(col)
+            o.glowMat.color.set(col)
+          })
+          linkObjsRef.current.forEach(lo => {
+            const col = new THREE.Color(lo.source.hex).lerp(new THREE.Color(lo.target.hex), 0.5)
+            lo.mat.color.set(col)
+          })
+        }
+      }
+      engineRef.current?.resetPhysics()
     }
   }), [graphData])
 
@@ -947,6 +1004,53 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       {/* Canvas */}
       <canvas ref={canvasRef} className="block w-full h-full touch-none" />
+
+      {/* Inline Renamer Overlay */}
+      <AnimatePresence>
+        {renamer && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute z-50 -translate-x-1/2 -translate-y-1/2 shadow-2xl rounded-lg overflow-hidden border border-accent/40"
+            style={{ left: renamer.cx, top: renamer.cy }}
+          >
+            <input
+              autoFocus
+              value={renamer.label}
+              onChange={e => setRenamer({ ...renamer, label: e.target.value })}
+              onBlur={() => {
+                if (renamer.label.trim()) {
+                  // Propagate rename
+                  if (onNodeRename) onNodeRename(renamer.id, renamer.label.trim())
+                  // Update local sprite for instant feedback
+                  const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
+                  if (obj) {
+                    obj.node.label = renamer.label.trim()
+                    const { sprite, sprMat } = buildLabelSprite(obj.node.label)
+                    const scene = sceneRef.current
+                    if (scene) {
+                      if (obj.node._sprite) scene.remove(obj.node._sprite)
+                      sprite.renderOrder = 999
+                      scene.add(sprite)
+                      obj.node._sprite = sprite
+                      obj.node._sprMat = sprMat
+                      obj.sprMat = sprMat
+                    }
+                  }
+                }
+                setRenamer(null)
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') setRenamer(null)
+              }}
+              className="bg-surface/95 text-text px-3 py-1.5 min-w-[120px] max-w-[300px] text-center text-sm font-medium tracking-wide outline-none focus:bg-surface"
+              style={{ width: `${Math.max(120, renamer.label.length * 10)}px` }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Hint — desktop vs mobile */}
       <div id="graph-hint"
