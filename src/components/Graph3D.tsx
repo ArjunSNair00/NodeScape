@@ -139,6 +139,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const edgeHoverEnabledRef = useRef(sessionStorage.getItem('edgeHover') === 'true')
   const continuousPhysicsEnabledRef = useRef(sessionStorage.getItem('continuousPhysics') !== 'false')
   const edgeDragEnabledRef = useRef(sessionStorage.getItem('edgeDrag') === 'true')
+  const nodeIconsEnabledRef = useRef(sessionStorage.getItem('showNodeIcons') !== 'false')
+  const lockCameraEnabledRef = useRef(sessionStorage.getItem('lockCamera') !== 'false')
+  const lockedNodeIdRef = useRef<string | null>(null)
   const idleTRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const animRef     = useRef(0)
   const tRef           = useRef(0)
@@ -161,7 +164,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     lastMidpoint: { x: 0, y: 0 },
   })
   
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => window.innerWidth >= 768)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [showSavedToast, setShowSavedToast] = useState(false)
   const isCommittingRef = useRef(false)
   
@@ -244,6 +247,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
   // Shared pan helper — used by mouse, keyboard, and D-pad
   const doPan = useCallback((dx: number, dy: number) => {
+    lockedNodeIdRef.current = null
     const speed = sph().radius * 0.0012
     const right = new THREE.Vector3()
     right.crossVectors(
@@ -369,6 +373,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       pLight2Ref.current?.position.set(-120*Math.cos(tRef.current*.15), 80*Math.sin(tRef.current*.19), -100*Math.cos(tRef.current*.12))
 
       if (autoRotRef.current) sphRef.current.theta += 0.0025
+      if (lockedNodeIdRef.current) {
+        const n = simNodesRef.current.find(sn => sn.id === lockedNodeIdRef.current)
+        if (n) panTargetRef.current.set(n.x, n.y, n.z)
+      }
       panOffRef.current.lerp(panTargetRef.current, 0.07)
       doApplyCam()
       renderer.render(scene, camera)
@@ -434,8 +442,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         start: { x: e.clientX, y: e.clientY },
       }
 
-      // Shift+left-click = pan (skip node hit test)
-      if (e.button !== 2 && e.button !== 1 && !isShift) {
+      if (e.button === 2 && lockCameraEnabledRef.current) {
+        const hit = getHit(e.clientX, e.clientY)
+        if (hit && 'node' in hit) {
+          lockedNodeIdRef.current = hit.node.id
+        }
+      } else if (e.button !== 2 && e.button !== 1 && !isShift) {
         const hit = getHit(e.clientX, e.clientY)
         if (hit) {
           if ('node' in hit) {
@@ -847,6 +859,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       return edgeDragEnabledRef.current
     },
 
+    toggleNodeIcons() {
+      nodeIconsEnabledRef.current = !nodeIconsEnabledRef.current
+      const showIcons = nodeIconsEnabledRef.current
+      const scene = sceneRef.current
+      if (scene) {
+        nodeObjsRef.current.forEach(o => {
+          const { sprite, sprMat } = buildLabelSprite(o.node.label, showIcons ? o.node.icon : undefined)
+          sprite.renderOrder = 999
+          if (o.node._sprite) scene.remove(o.node._sprite)
+          o.node._sprite = sprite
+          o.node._sprMat = sprMat
+          o.sprMat = sprMat
+          scene.add(sprite)
+        })
+      }
+      return showIcons
+    },
+
+    toggleLockCamera() {
+      lockCameraEnabledRef.current = !lockCameraEnabledRef.current
+      if (!lockCameraEnabledRef.current) lockedNodeIdRef.current = null
+      return lockCameraEnabledRef.current
+    },
+
     triggerSaveToast() {
       setShowSavedToast(true)
       setTimeout(() => setShowSavedToast(false), 2000)
@@ -1031,7 +1067,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
                     const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
                     if (obj) {
                       obj.node.label = val
-                      const { sprite, sprMat } = buildLabelSprite(val)
+                      const { sprite, sprMat } = buildLabelSprite(val, nodeIconsEnabledRef.current ? obj.node.icon : undefined)
                       const scene = sceneRef.current
                       if (scene) {
                         if (obj.node._sprite) scene.remove(obj.node._sprite)

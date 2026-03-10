@@ -134,6 +134,8 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
   const [edgeHover, setEdgeHover] = useState(() => sessionStorage.getItem('edgeHover') === 'true')
   const [continuousPhysics, setContinuousPhysics] = useState(() => sessionStorage.getItem('continuousPhysics') !== 'false')
   const [edgeDrag, setEdgeDrag] = useState(() => sessionStorage.getItem('edgeDrag') === 'true')
+  const [showNodeIcons, setShowNodeIcons] = useState(() => sessionStorage.getItem('showNodeIcons') !== 'false')
+  const [lockCamera, setLockCamera] = useState(() => sessionStorage.getItem('lockCamera') !== 'false')
 
   const [resetPositions, setResetPositions] = useState(true)
   const [resetColors, setResetColors] = useState(true)
@@ -145,7 +147,9 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
     sessionStorage.setItem('edgeHover', edgeHover.toString())
     sessionStorage.setItem('continuousPhysics', continuousPhysics.toString())
     sessionStorage.setItem('edgeDrag', edgeDrag.toString())
-  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag])
+    sessionStorage.setItem('showNodeIcons', showNodeIcons.toString())
+    sessionStorage.setItem('lockCamera', lockCamera.toString())
+  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag, showNodeIcons, lockCamera])
 
   const g = () => graphRef.current
 
@@ -362,6 +366,32 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
           </svg>
         </ActionBtn>
       </BtnRow>
+
+      <BtnRow label="Show Node Icons">
+        <ActionBtn onClick={() => setShowNodeIcons(g()?.toggleNodeIcons() ?? true)} wide active={showNodeIcons}>
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M6 10s3-2.5 3-5a3 3 0 10-6 0c0 2.5 3 5 3 5z" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="6" cy="5" r="1" />
+          </svg>
+          {showNodeIcons ? 'ON' : 'OFF'}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Lock Camera (Right-click)">
+        <ActionBtn onClick={() => setLockCamera(g()?.toggleLockCamera() ?? false)} wide active={lockCamera}>
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M4 1L1 1V4 M11 1L8 1 M11 1V4 M1 11L1 8 M1 11H4 M11 11L11 8 M11 11H8" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="6" cy="6" r="1.5" />
+          </svg>
+          {lockCamera ? 'ON' : 'OFF'}
+        </ActionBtn>
+      </BtnRow>
+
+      <div className="mt-4 px-1 pb-4">
+        <p className="text-[10px] text-muted2 leading-relaxed text-center">
+          When Lock Camera is enabled, right-click a node to smoothly lock your view to it. Pan to break lock.
+        </p>
+      </div>
 
       <div className="mt-6 pt-4 border-t border-border">
         <p className="text-[10px] text-muted tracking-widest uppercase mb-3">Keyboard shortcuts</p>

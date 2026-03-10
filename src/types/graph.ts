@@ -88,4 +88,6 @@ export interface GraphHandle {
   triggerSaveToast: () => void
   getFreshData: () => GraphData
   resetGraph: (opts: { positions: boolean; colors: boolean }, original: GraphData) => void
+  toggleNodeIcons: () => boolean
+  toggleLockCamera: () => boolean
 }

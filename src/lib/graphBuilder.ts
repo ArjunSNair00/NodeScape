@@ -5,7 +5,7 @@ export function hexToInt(hex: string): number {
   return parseInt(hex.replace('#', ''), 16)
 }
 
-export function buildLabelSprite(label: string): { sprite: THREE.Sprite; sprMat: THREE.SpriteMaterial } {
+export function buildLabelSprite(label: string, icon?: string): { sprite: THREE.Sprite; sprMat: THREE.SpriteMaterial } {
   const canvas = document.createElement('canvas')
   canvas.width = 1024
   canvas.height = 160
@@ -17,11 +17,12 @@ export function buildLabelSprite(label: string): { sprite: THREE.Sprite; sprMat:
   ctx.fillStyle = '#ffffff'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(label, 512, 80)
+  const text = icon ? `${icon} ${label}` : label
+  ctx.fillText(text, 512, 80)
   ctx.shadowBlur = 14
-  ctx.fillText(label, 512, 80)
+  ctx.fillText(text, 512, 80)
   ctx.shadowBlur = 0
-  ctx.fillText(label, 512, 80)
+  ctx.fillText(text, 512, 80)
 
   const tex = new THREE.CanvasTexture(canvas)
   const sprMat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 1, depthTest: false, depthWrite: false })
@@ -66,6 +67,8 @@ export function buildSceneObjects(
   simNodes: SimNode[],
   simLinks: SimLink[]
 ): { nodeObjs: NodeObj[]; linkObjs: LinkObj[] } {
+  // If no true override passed later, just check session storage directly inside graphBuilder
+  const showIcons = sessionStorage.getItem('showNodeIcons') !== 'false'
   const nodeObjs: NodeObj[] = []
   const linkObjs: LinkObj[] = []
 
@@ -90,7 +93,7 @@ export function buildSceneObjects(
     mesh.add(new THREE.Mesh(glowGeo, glowMat))
 
     // Label sprite (scene-level, not mesh child — so we can scale by distance)
-    const { sprite, sprMat } = buildLabelSprite(n.label)
+    const { sprite, sprMat } = buildLabelSprite(n.label, showIcons ? n.icon : undefined)
     scene.add(sprite)
     n._sprite = sprite
     n._sprMat = sprMat
@@ -129,8 +132,8 @@ export function clearSceneObjects(scene: THREE.Scene, nodeObjs: NodeObj[], linkO
   })
 }
 
-export function runPhysics(simNodes: SimNode[], simLinks: SimLink[], tick: number, draggedNodeId?: string) {
-  const alpha = Math.max(0.012, 0.38 * Math.exp(-tick * 0.005))
+export function runPhysics(simNodes: SimNode[], simLinks: SimLink[], tick: number, draggedNodeId?: string): number {
+  const alpha = Math.max(0.012, 0.38 * Math.exp(-tick * 0.08)) // Faster alpha decay: 0.005 -> 0.08
 
   // Repulsion
   for (let i = 0; i < simNodes.length; i++) {
@@ -154,14 +157,25 @@ export function runPhysics(simNodes: SimNode[], simLinks: SimLink[], tick: numbe
   })
 
   // Center gravity + integrate
+  let maxV2 = 0
   simNodes.forEach(n => {
     n.vx -= n.x * 0.006 * alpha
     n.vy -= n.y * 0.006 * alpha
     n.vz -= n.z * 0.006 * alpha
     if (draggedNodeId && n.id === draggedNodeId) return
-    n.vx *= 0.82; n.vy *= 0.82; n.vz *= 0.82
+    
+    // Velocity decay: 0.82 -> 0.4 (1 - 0.6)
+    n.vx *= 0.4 
+    n.vy *= 0.4 
+    n.vz *= 0.4
+    
+    const v2 = n.vx * n.vx + n.vy * n.vy + n.vz * n.vz
+    if (v2 > maxV2) maxV2 = v2
+
     n.x += n.vx; n.y += n.vy; n.z += n.vz
   })
+
+  return Math.sqrt(maxV2)
 }
 
 export function syncPositions(nodeObjs: NodeObj[], linkObjs: LinkObj[], spherical: Spherical, labelMult = 1) {

@@ -384,8 +384,15 @@ export class GraphStateEngine {
    */
   tick(draggedNodeId?: string) {
     if (this.simTick < 500) {
-      runPhysics(this.simNodes, this.simLinks, this.simTick, draggedNodeId)
-      this.simTick++
+      const maxV = runPhysics(this.simNodes, this.simLinks, this.simTick, draggedNodeId)
+      
+      // Automatic stabilization: stop if movement is negligible
+      if (maxV < 0.001 && this.simTick > 10) {
+        this.simTick = 500
+      } else {
+        this.simTick++
+      }
+      
       this.simTickRef.current = this.simTick
     }
   }
