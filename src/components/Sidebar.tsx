@@ -29,8 +29,12 @@ const TABS: { id: Tab; label: string }[] = [
 export default function Sidebar({ open, graphData, originalGraphData, graphRef, onClose, onGraphChange, onSave, onGoHome }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('ai')
   const [copied, setCopied] = useState(false)
-  const [jsonInput, setJsonInput] = useState('')
+  const [jsonInput, setJsonInput] = useState(JSON.stringify(graphData, null, 2))
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setJsonInput(JSON.stringify(graphData, null, 2))
+  }, [graphData])
 
   const linkCount = (() => {
     const seen = new Set<string>()
@@ -128,7 +132,7 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
   const [drawLevel, setDrawLevel] = useState(() => Number(sessionStorage.getItem('drawLevel') || 5)) // 1-9, 5 = default
   const [idleRotate, setIdleRotate] = useState(() => sessionStorage.getItem('idleRotate') !== 'false')
   const [edgeHover, setEdgeHover] = useState(() => sessionStorage.getItem('edgeHover') === 'true')
-  const [continuousPhysics, setContinuousPhysics] = useState(() => sessionStorage.getItem('continuousPhysics') === 'true')
+  const [continuousPhysics, setContinuousPhysics] = useState(() => sessionStorage.getItem('continuousPhysics') !== 'false')
   const [edgeDrag, setEdgeDrag] = useState(() => sessionStorage.getItem('edgeDrag') === 'true')
 
   const [resetPositions, setResetPositions] = useState(true)
@@ -480,8 +484,8 @@ function DataEditTab({ graphData, onGraphChange }: { graphData: GraphData; onGra
   const [jsonStr, setJsonStr] = useState(() => JSON.stringify(graphData, null, 2))
   const [err, setErr] = useState<string | null>(null)
 
-  // Sync if graph changes externally
-  // useEffect(() => { setJsonStr(JSON.stringify(graphData, null, 2)) }, [graphData])
+  // Sync if graph changes externally (e.g., node rename via 3D double click)
+  useEffect(() => { setJsonStr(JSON.stringify(graphData, null, 2)) }, [graphData])
 
   const handleApply = () => {
     setErr(null)

@@ -128,8 +128,21 @@ export default function App() {
                   setGraphData(d => ({ ...d, title }))
                 }}
                 onNodeRename={(id: string, label: string) => {
-                  const node = graphData.nodes.find(n => n.id === id)
-                  if (node) handleNodeUpdate({ ...node, label })
+                  let currentData = graphData
+                  if (graphRef.current) {
+                    currentData = graphRef.current.getFreshData()
+                  }
+                  const newNodes = currentData.nodes.map(n => n.id === id ? { ...n, label } : n)
+                  const newData = { ...currentData, nodes: newNodes }
+                  setGraphData(newData)
+                  const newId = saveGraph(newData, currentId)
+                  setCurrentId(newId)
+                  
+                  // Also manually call engine's updateNode since Graph3D's load() might take a frame
+                  if (graphRef.current) {
+                    // Update the active node on the engine directly for continuous feedback if needed
+                    // (The useEffect in Graph3D will trigger a rebuild anyway, but this is safe)
+                  }
                 }}
               />
             </div>

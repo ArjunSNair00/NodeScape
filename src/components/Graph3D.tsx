@@ -137,7 +137,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const autoRotEnabledRef = useRef(sessionStorage.getItem('idleRotate') !== 'false')
   const autoRotRef  = useRef(autoRotEnabledRef.current)
   const edgeHoverEnabledRef = useRef(sessionStorage.getItem('edgeHover') === 'true')
-  const continuousPhysicsEnabledRef = useRef(sessionStorage.getItem('continuousPhysics') === 'true')
+  const continuousPhysicsEnabledRef = useRef(sessionStorage.getItem('continuousPhysics') !== 'false')
   const edgeDragEnabledRef = useRef(sessionStorage.getItem('edgeDrag') === 'true')
   const idleTRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const animRef     = useRef(0)
@@ -161,8 +161,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     lastMidpoint: { x: 0, y: 0 },
   })
   
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => window.innerWidth >= 768)
   const [showSavedToast, setShowSavedToast] = useState(false)
+  const isCommittingRef = useRef(false)
   
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(graphData.title)
@@ -170,10 +171,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   useEffect(() => { setTitleDraft(graphData.title) }, [graphData.title])
 
   const commitTitleRename = () => {
+    isCommittingRef.current = true
     const trimmed = titleDraft.trim()
     if (trimmed && trimmed !== graphData.title && onRename) onRename(trimmed)
     else setTitleDraft(graphData.title) // revert
     setEditingTitle(false)
+    setTimeout(() => { isCommittingRef.current = false }, 100)
   }
 
   const handleSaveClick = () => {
@@ -287,7 +290,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     rendererRef.current = renderer
 
     const scene = new THREE.Scene()
-    const initialDrawLevel = Number(sessionStorage.getItem('drawLevel') || 5)
+    const initialDrawLevel = Number(sessionStorage.getItem('drawLevel') || 9)
     const initialDensity = 0.003 - ((initialDrawLevel - 1) / 8) * 0.003
     const fog   = new THREE.FogExp2(themeFogColor(theme), initialDensity)
     scene.fog   = fog; fogRef.current = fog; sceneRef.current = scene
@@ -386,7 +389,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   }, [])
 
   // ── resize ────────────────────────────────────────────────────────────────────
-  useEffect(() => { const t = setTimeout(resize, 360); return () => clearTimeout(t) }, [sidebarOpen, resize])
   useEffect(() => { window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [resize])
 
   // ── keyboard: arrow keys + shift+arrow ───────────────────────────────────────
@@ -870,6 +872,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           }
           n.vx = n.vy = n.vz = 0
         })
+        engineRef.current?.resetPhysics()
       }
       if (opts.colors) {
         const scene = sceneRef.current
@@ -893,7 +896,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           })
         }
       }
-      engineRef.current?.resetPhysics()
     }
   }), [graphData])
 
@@ -964,7 +966,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               autoFocus
               value={titleDraft}
               onChange={e => setTitleDraft(e.target.value)}
-              onBlur={commitTitleRename}
+              onBlur={() => { if (!isCommittingRef.current) { setEditingTitle(false); setTitleDraft(graphData.title); } }}
               onKeyDown={e => { if (e.key === 'Enter') commitTitleRename(); if (e.key === 'Escape') { setEditingTitle(false); setTitleDraft(graphData.title); } }}
               className="text-xs text-text tracking-widest bg-surface2/80 border border-accent rounded px-2 py-0.5 outline-none w-48"
               style={{ userSelect: 'text' }}
@@ -1019,30 +1021,31 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               autoFocus
               value={renamer.label}
               onChange={e => setRenamer({ ...renamer, label: e.target.value })}
-              onBlur={() => {
-                if (renamer.label.trim()) {
-                  // Propagate rename
-                  if (onNodeRename) onNodeRename(renamer.id, renamer.label.trim())
-                  // Update local sprite for instant feedback
-                  const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
-                  if (obj) {
-                    obj.node.label = renamer.label.trim()
-                    const { sprite, sprMat } = buildLabelSprite(obj.node.label)
-                    const scene = sceneRef.current
-                    if (scene) {
-                      if (obj.node._sprite) scene.remove(obj.node._sprite)
-                      sprite.renderOrder = 999
-                      scene.add(sprite)
-                      obj.node._sprite = sprite
-                      obj.node._sprMat = sprMat
-                      obj.sprMat = sprMat
+              onBlur={() => { if (!isCommittingRef.current) setRenamer(null) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  isCommittingRef.current = true
+                  const val = renamer.label.trim()
+                  if (val) {
+                    if (onNodeRename) onNodeRename(renamer.id, val)
+                    const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
+                    if (obj) {
+                      obj.node.label = val
+                      const { sprite, sprMat } = buildLabelSprite(val)
+                      const scene = sceneRef.current
+                      if (scene) {
+                        if (obj.node._sprite) scene.remove(obj.node._sprite)
+                        sprite.renderOrder = 999
+                        scene.add(sprite)
+                        obj.node._sprite = sprite
+                        obj.node._sprMat = sprMat
+                        obj.sprMat = sprMat
+                      }
                     }
                   }
+                  setRenamer(null)
+                  setTimeout(() => { isCommittingRef.current = false }, 100)
                 }
-                setRenamer(null)
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter') e.currentTarget.blur()
                 if (e.key === 'Escape') setRenamer(null)
               }}
               className="bg-surface/95 text-text px-3 py-1.5 min-w-[120px] max-w-[300px] text-center text-sm font-medium tracking-wide outline-none focus:bg-surface"
