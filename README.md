@@ -1,8 +1,9 @@
 <p align="center">
-🌌 NodeScape
+🌌 <strong>NodeScape</strong>
 </p>
+
 <p align="center">
-  <i>"Explore a subject like a galaxy."</i>
+  <i>"Explore knowledge like a galaxy."</i>
 </p>
 
 <p align="center">
@@ -14,134 +15,206 @@
 
 <p align="center">
   <strong>NodeScape</strong> — Explore knowledge in 3D. <br/>
-  An interactive AI-powered knowledge graph explorer built with Three.js, combining visualization, note-taking, and idea exploration in a dynamic network of concepts.
+  An interactive AI-powered knowledge graph explorer built with Three.js that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts.
 </p>
 
 <p align="center">
-  <img src="screenshots&demos/graph1.png" alt="Node Page View" width="800" />
+  <img src="screenshots&demos/graph1.png" width="800" />
 </p>
+
 <p align="center">
-  <img src="screenshots&demos/graph.gif" alt="Node Page View" width="800"/>
+  <img src="screenshots&demos/graph.gif" width="800"/>
 </p>
+
 ---
 
-## ✨ Features & UI Components
+# ✨ Features
 
-### 🏡 Homepage & Graph Library
-The homepage acts as a visually appealing library. All graphs are saved natively to your browser's local storage. This functions as a dynamic, offline library for your visualized subjects. You can rename, delete, or load existing graphs directly from the card interfaces.
-
-### 🌌 3D Graph Viewer
-Seamlessly rotate, pan, and zoom through complex subjects in 3D space. 
-- **Desktop:** Click & drag to rotate, Shift+drag or right-click to pan, scroll to zoom.
-- **Mobile:** Adaptive on-screen D-Pad interface for panning, intuitive pinch-to-zoom, and touch rotation.
+## 🏡 Homepage & Graph Library
+The homepage acts as a **visual knowledge library**.  
+All graphs are saved directly in your browser using **local storage**, allowing you to maintain a personal collection of knowledge maps.
 
 <p align="center">
-  <img src="screenshots&demos/homepage.png" alt="3D Graph Viewer" width="800" />
-</p>
-<p align="center">
-  <img src="screenshots&demos/graph.png" alt="3D Graph Viewer" width="800" height="400"/>
-</p>
-### 📄 Detailed Node Page View
-Clicking on any node smoothly transitions you into a detailed full-screen "Page View" representing the core concept. These pages support markdown-style rich formatting to display in-depth content. Nodes can link to each other, allowing you to seamlessly surf through subjects directly from within the pages!
-
-<p align="center">
-  <img src="screenshots&demos/note.png" alt="Node Page View" width="800" />
+  <img src="screenshots&demos/homepage.png" width="800" />
 </p>
 
-### 🏛️ Architecture
+You can:
+- create new graphs
+- rename or delete existing graphs
+- reopen graphs instantly from visual cards
+
+This makes NodeScape function as an **offline-first knowledge workspace**.
+
+---
+
+## 🌌 3D Knowledge Graph Explorer
+
+Navigate through complex topics inside a **fully interactive 3D space**.
+
+### Desktop Controls
+- Drag → rotate graph
+- Drag on node → move node (turn off physics for maximum flexibility)
+- Shift / Right click + drag → pan
+- Right Click on node → lock view onto node (enable in controls tab)
+- Scroll / middle drag → zoom
+- Double click on node label / node content → rename node / edit node content
+
+### Mobile Controls
+- On-screen **D-Pad** for panning  
+- Pinch to zoom  
+- Touch rotation
+- hold node to move node around / see neighbours
+
 <p align="center">
-LLM (ChatGPT / Gemini / Claude / etc)<br>
+  <img src="screenshots&demos/graph.png" width="800" height="400"/>
 </p>
+
+---
+
+## 📄 Node Pages (Concept Notes)
+
+Clicking a node opens a **detailed concept page** containing structured information about that idea.
+
+Features include:
+
+- rich formatted content
+- connections to related nodes
+- quick navigation between concepts
+
+Nodes behave like **interactive knowledge pages**, letting you surf through subjects naturally.
+
 <p align="center">
- ↓<br>
+  <img src="screenshots&demos/note.png" width="800" />
 </p>
+
+---
+
+## 🧭 Exploration-Focused Design
+
+NodeScape is designed to feel less like a static document and more like **exploring a map of knowledge**.
+
+Future exploration features include:
+
+- **visited node tracking**
+- **highlighting connected nodes while reading**
+- **numbering visited paths**
+- optional **game-like exploration mode**
+
+The goal is to turn learning into **navigating a landscape of ideas** rather than scrolling through text.
+
+---
+
+# 🏛️ Architecture
+
 <p align="center">
-structured JSON<br>
-</p>     
-<p align="center">
- ↓<br>
+LLM (llama 3.3 70B)<br>
+↓<br>
+Structured JSON Knowledge Graph<br>
+↓<br>
+NodeScape Parser<br>
+↓<br>
+3D Graph Renderer (Three.js + d3-force-3d)
 </p>
-<p align="center">
-NodeScape parser<br>
-</p>
-<p align="center">
- ↓<br>
-</p>
-<p align="center">
-3D graph renderer (Three.js + d3-force)<br>
-</p>
 
+AI generates structured concept data which NodeScape converts into an **interactive spatial knowledge graph**.
 
+---
 
-### 🎛️ AI Data & Tool Sidebars
-NodeScape features two vital sidebars in the 3D space:
-1. **AI Data Sidebar (Right):** Access your **Prompt** templates to copy-paste into an LLM. Paste JSON results directly into the **Paste** tab to generate the graph instantaneously. Use the **Editor** tab for live access to the raw internal JSON—surgically add, modify, or remove nodes any time. Toggle various visual graph settings in the **Controls** tab.
-2. **Node Index Sidebar (Left):** Easily scan and find nodes through a clean hierarchical index list.
+## 🎛️ AI Tools & Data Sidebars
 
-### 🎨 Glassmorphic Interface
-Gorgeous Framer-Motion driven UI packed with rich aesthetic transitions and a sleek dark/light mode engine.
+NodeScape includes two key sidebars for working with graphs.
 
-## 🛠️ Tech Stack
+### AI Data Sidebar (Right)
+- AI Chatbot for generating graphs
+- Prompt templates for generating graph JSON
+- Paste AI output to instantly generate graphs
+- Raw JSON editor for advanced editing
+- Graph visualization controls
 
-Built for extreme performance, scale, and modern UI practices.
+### Node Index Sidebar (Left)
+- quick hierarchical list of nodes
+- jump directly to any concept in the graph
 
-- **Frontend Framework**: [React](https://reactjs.org/) & [TypeScript](https://www.typescriptlang.org/) for robust architecture.
-- **3D Graphics**: [Three.js](https://threejs.org/) powering the custom high-performance WebGL rendering.
-- **Layout & Physics**: [d3-force-3d](https://github.com/vasturiano/d3-force-3d) safely calculates the massive N-body simulation layouts in 3D.
-- **Animations**: [Framer Motion](https://www.framer.com/motion/) for state-driven micro animations.
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) for a scalable, sleek design language.
+---
 
-## 🚀 Getting Started
+## 🎨 Glassmorphic UI
 
-### 🌟 Live Demo
+A modern UI system powered by **Framer Motion** and **Tailwind CSS**, featuring:
 
-NodeScape is hosted live! You can try out the application directly in your browser:  
-[**Try NodeScape on Vercel**](https://node-scape.vercel.app/)
+- smooth transitions
+- dark / light themes
+- glassmorphic panels
+- animated interface elements
 
-### 1. Installation
+---
 
-Clone the repository and install the dependencies:
+# 🛠️ Tech Stack
 
-```bash
-git clone https://github.com/your-username/nodescape.git
-cd nodescape
-npm install
-```
+Built for **performance, scale, and interactive visualization**.
 
-### 2. Development Server
+**Frontend**
+- React  
+- TypeScript  
 
-Start up the local Vite dev server:
+**3D Visualization**
+- Three.js  
 
-```bash
-npm run dev
-```
+**Physics Simulation**
+- d3-force-3d  
 
-Navigate to `http://localhost:5173` to experience NodeScape.
+**Animations**
+- Framer Motion  
+
+**Styling**
+- Tailwind CSS  
+
+---
+
+# 🚀 Getting Started
+
+## 🌟 Live Demo
+
+Try NodeScape directly in your browser:
+
+**https://node-scape.vercel.app/**
 
 ## 🧠 How To Use
 
-1. **Create an AI Prompt**: In the application sidebar, copy the **AI Prompt**.
-2. **Generate Data**: Paste this prompt into ChatGPT, Claude, or any LLM of your choice and provide a topic you'd like to explore.
-3. **Visualize**: Take the JSON output from the AI, go back into NodeScape, and paste it into the **Paste** tab.
-4. **Explore & Save**: Pan around the 3D space to explore, edit what you need, and hit the **Save** button to store it in your library.
+1. Copy the **AI Prompt** from the sidebar  
+2. Paste it into an LLM like ChatGPT or Claude  
+3. Ask for a topic (example: *Stoicism*, *Quantum Computing*)  
+4. Paste the returned JSON into NodeScape  
+5. Explore the generated knowledge graph  
+
+---
 
 ## 🔮 Future Roadmap
 
-NodeScape is constantly evolving. The ultimate vision is to transform NodeScape into a fully autonomous **Agentic Graph Maker**.
+NodeScape is evolving toward becoming an **autonomous knowledge graph generator**.
 
-- 🐳 **Local & Cloud AI Generation:** We plan to integrate an embedded **Ollama** model directly into the application to generate custom 3D knowledge nodes completely on the fly using local AI. Additionally, support for connecting directly to **Cloud AI APIs** (like OpenAI, Anthropic) is planned for automatic generation without the need for manual copy-pasting.
-- 📄 **Document Knowledge Extraction:** In the future, you will be able to upload PDFs, images, and other document types directly into NodeScape. The system will automatically process these files, extract deeply nested knowledge, and instantly generate the corresponding nodes and edges to visualize the document's concepts.
-- 🌱 **Self-Expanding Webs:** Nodes will have the ability to "autonomously think" and fetch missing gaps of knowledge without requiring manual prompts.
-- 🗄️ **Persistent Database:** Transitioning from browser local storage to an actual, robust database system to save graphs securely and seamlessly across multiple devices.
-- ⚙️ **Dedicated AI Backend:** Building a separate back-end architecture specifically designed to interface with various AI models and services securely and efficiently.
-- 🔍 **Search Bar:** Ability to search and filter nodes, and also by content within the node.
-- hover the node to see the content
-- attach nodes dynamically as you go (when using ai to generate nodes and edges)
-- smart coloring (colour similar nodes)
-- add glow and bloom to nodes to amplify galaxy feeling
-- items under a class should be clustered
+### 🤖 AI Generation
+- Local AI generation using **Ollama**
+- Direct integration with **OpenAI / Anthropic APIs**
+
+### 📄 Document Knowledge Extraction
+Upload PDFs or images and automatically extract their concepts into graph structures.
+
+### 🌱 Self-Expanding Knowledge Graphs
+Nodes can dynamically expand and generate missing concepts.
+
+### 🗄️ Persistent Graph Database
+Move from local storage to a **cloud database** for multi-device sync.
+
+### 🔍 Graph Search
+Search nodes by title or content.
+
+### 🌌 Visual Enhancements
+- glow & bloom effects  
+- smart node coloring  
+- automatic clustering of related nodes  
+- better visual grouping of knowledge domains  
+
 ---
 
-<p align="center">
-  Built by <strong>Arjun S Nair</strong>
-</p>
+### 👨‍💻 Built by
+**Arjun S Nair**
