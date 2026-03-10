@@ -623,9 +623,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       }
 
       if (!m.down) {
-        const hit = getHit(e.clientX, e.clientY)
+        let hit = getHit(e.clientX, e.clientY)
+
+        // If mouse is over the preview div, treat it as still hovering the previewed node
+        if (!hit && mouseOverPreviewRef.current && previewNodeIdRef.current) {
+          const hoveredNode = nodeObjsRef.current.find(o => o.node.id === previewNodeIdRef.current)
+          if (hoveredNode) hit = hoveredNode
+        }
+
         hovObjRef.current = setHoveredNode(hit, hovObjRef.current, nodeObjsRef.current, linkObjsRef.current)
-        canvas.style.cursor = hit ? 'grab' : 'default'
+        canvas.style.cursor = hit ? 'grab' : (mouseOverPreviewRef.current ? 'default' : 'default')
         showTooltip(e.clientX, e.clientY, hit)
       }
     }
