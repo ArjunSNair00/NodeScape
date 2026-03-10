@@ -137,6 +137,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const previewNodeIdRef   = useRef<string | null>(null)  // which node is currently shown in the preview
   const mouseOverPreviewRef = useRef(false)                // true while cursor is inside the preview div
   const hidePreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
+  const draftEdgeRef       = useRef<{ sourceNode: NodeObj, line: THREE.Line } | null>(null)
 
   const mouseRef    = useRef({ down: false, right: false, middle: false, shift: false, totalDist: 0, last: { x: 0, y: 0 }, start: { x: 0, y: 0 } })
   const autoRotEnabledRef = useRef(sessionStorage.getItem('idleRotate') !== 'false')
@@ -544,10 +546,28 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         if (hit && 'node' in hit) {
           lockedNodeIdRef.current = hit.node.id
         }
-      } else if (e.button !== 2 && e.button !== 1 && !isShift) {
+      } else if (e.button !== 2 && e.button !== 1) {
         const hit = getHit(e.clientX, e.clientY)
-        if (hit) {
-          if ('node' in hit) {
+        if (hit && 'node' in hit) {
+          if (isShift && manualModeEnabledRef.current) {
+            // Manual edge drawing
+            const n = hit.node
+            const geo = new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(n.x, n.y, n.z),
+              new THREE.Vector3(n.x, n.y, n.z)
+            ])
+            const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })
+            const line = new THREE.Line(geo, mat)
+            sceneRef.current?.add(line)
+            draftEdgeRef.current = { sourceNode: hit as NodeObj, line }
+            
+            // Set up drag plane coplanar with the node facing camera
+            const camDir = new THREE.Vector3()
+            cameraRef.current!.getWorldDirection(camDir)
+            dragPlaneRef.current.setFromNormalAndCoplanarPoint(camDir, new THREE.Vector3(n.x, n.y, n.z))
+            canvas.style.cursor = 'crosshair'
+          } else if (!isShift) {
+            // Standard node drag
             draggedNodeRef.current = hit.node
             const camDir = new THREE.Vector3()
             cameraRef.current!.getWorldDirection(camDir)
@@ -557,22 +577,23 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             )
             canvas.style.cursor = 'grabbing'
             if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
-          } else if ('source' in hit && edgeDragEnabledRef.current) {
-            draggedLinkRef.current = hit
-            const camDir = new THREE.Vector3()
-            cameraRef.current!.getWorldDirection(camDir)
-            dragPlaneRef.current.setFromNormalAndCoplanarPoint(
-              camDir,
-              new THREE.Vector3(
-                (hit.source.x + hit.target.x) / 2,
-                (hit.source.y + hit.target.y) / 2,
-                (hit.source.z + hit.target.z) / 2
-              )
-            )
-            draggedLinkDragPtRef.current = null
-            canvas.style.cursor = 'grabbing'
-            if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
           }
+        } else if (hit && 'source' in hit && edgeDragEnabledRef.current && !isShift) {
+          // Standard edge drag
+          draggedLinkRef.current = hit
+          const camDir = new THREE.Vector3()
+          cameraRef.current!.getWorldDirection(camDir)
+          dragPlaneRef.current.setFromNormalAndCoplanarPoint(
+            camDir,
+            new THREE.Vector3(
+              (hit.source.x + hit.target.x) / 2,
+              (hit.source.y + hit.target.y) / 2,
+              (hit.source.z + hit.target.z) / 2
+            )
+          )
+          draggedLinkDragPtRef.current = null
+          canvas.style.cursor = 'grabbing'
+          if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
         }
       }
     }
@@ -585,6 +606,35 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       m.last = { x: e.clientX, y: e.clientY }
 
       if (m.down) {
+        if (draftEdgeRef.current) {
+          const rect = canvas.getBoundingClientRect()
+          mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+          mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+          raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
+          const pt = new THREE.Vector3()
+          raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, pt)
+          if (pt) {
+            const { sourceNode, line } = draftEdgeRef.current
+            const pos = line.geometry.attributes.position as THREE.BufferAttribute
+            // Start point locked to source node's current physical position (in case it moves slightly)
+            pos.setXYZ(0, sourceNode.node.x, sourceNode.node.y, sourceNode.node.z)
+            
+            // Re-raycast to snap to target nodes visually
+            let targetPt = pt
+            const hoverHit = getHit(e.clientX, e.clientY)
+            if (hoverHit && 'node' in hoverHit && hoverHit.node.id !== sourceNode.node.id) {
+               targetPt = new THREE.Vector3(hoverHit.node.x, hoverHit.node.y, hoverHit.node.z)
+               ;(line.material as THREE.LineBasicMaterial).color.setHex(0x34d399) // green snap
+            } else {
+               ;(line.material as THREE.LineBasicMaterial).color.setHex(0xffffff)
+            }
+            
+            pos.setXYZ(1, targetPt.x, targetPt.y, targetPt.z)
+            pos.needsUpdate = true
+          }
+          return
+        }
+
         if (continuousPhysicsEnabledRef.current && (draggedNodeRef.current || draggedLinkRef.current)) {
           engineRef.current?.resetPhysics()
         }
@@ -621,7 +671,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         }
       }
 
-      if (m.down && !draggedNodeRef.current && !draggedLinkRef.current) {
+      if (m.down && !draggedNodeRef.current && !draggedLinkRef.current && !draftEdgeRef.current) {
         // Pan: right-click drag OR shift+left-drag
         if (m.right || m.shift) {
           doPan(dx, dy)
@@ -654,7 +704,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
     const onMouseUp = (e: MouseEvent) => {
       const m = mouseRef.current
-      if (m.totalDist < 5) {
+      if (m.totalDist < 5 && !draftEdgeRef.current) {
         if (m.right) {
           if (manualModeEnabledRef.current) {
             const hit = getHit(e.clientX, e.clientY)
@@ -688,31 +738,31 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             
             // Raycast against label sprites for double-click rename
             const rect = canvas.getBoundingClientRect()
-        mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-        mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-        raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
-        
-        const sprites = nodeObjsRef.current.map(o => o.node._sprite).filter(Boolean) as THREE.Sprite[]
-        if (sprites.length > 0) {
-          const sHits = raycasterRef.current.intersectObjects(sprites)
-          if (sHits.length > 0) {
-            const hitSprite = sHits[0].object
-            const matchObj = nodeObjsRef.current.find(o => o.node._sprite === hitSprite)
-            if (matchObj) {
-              const id = matchObj.node.id
-              if (clickRef.current.id === id && now - clickRef.current.time < 350) {
-                // Double click!
-                doubleClickedSprite = true
-                setRenamer({ id, label: matchObj.node.label, cx: e.clientX, cy: e.clientY })
-                clickRef.current = { time: 0, id: null }
+            mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+            mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+            raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
+            
+            const sprites = nodeObjsRef.current.map(o => o.node._sprite).filter(Boolean) as THREE.Sprite[]
+            if (sprites.length > 0) {
+              const sHits = raycasterRef.current.intersectObjects(sprites)
+              if (sHits.length > 0) {
+                const hitSprite = sHits[0].object
+                const matchObj = nodeObjsRef.current.find(o => o.node._sprite === hitSprite)
+                if (matchObj) {
+                  const id = matchObj.node.id
+                  if (clickRef.current.id === id && now - clickRef.current.time < 350) {
+                    // Double click!
+                    doubleClickedSprite = true
+                    setRenamer({ id, label: matchObj.node.label, cx: e.clientX, cy: e.clientY })
+                    clickRef.current = { time: 0, id: null }
+                  } else {
+                    clickRef.current = { time: now, id }
+                  }
+                }
               } else {
-                clickRef.current = { time: now, id }
+                clickRef.current = { time: 0, id: null }
               }
             }
-          } else {
-            clickRef.current = { time: 0, id: null }
-          }
-        }
 
             if (!doubleClickedSprite) {
               const hit = getHit(e.clientX, e.clientY)
@@ -721,6 +771,21 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           }
         }
       }
+
+      if (draftEdgeRef.current) {
+        // Handle release of manual edge draw
+        const hit = getHit(e.clientX, e.clientY)
+        if (hit && 'node' in hit && hit.node.id !== draftEdgeRef.current.sourceNode.node.id) {
+          engineRef.current?.addEdge(draftEdgeRef.current.sourceNode.node.id, hit.node.id)
+        }
+        
+        // Clean up visual line
+        sceneRef.current?.remove(draftEdgeRef.current.line)
+        draftEdgeRef.current.line.geometry.dispose()
+        ;(draftEdgeRef.current.line.material as THREE.Material).dispose()
+        draftEdgeRef.current = null
+      }
+
       draggedNodeRef.current = null
       draggedLinkRef.current = null
       draggedLinkDragPtRef.current = null
