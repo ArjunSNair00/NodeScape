@@ -157,8 +157,78 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const labelMultRef   = useRef(0.3 + ((Number(sessionStorage.getItem('labelLevel') || 5) - 1) / 8) * 1.9)        // user-adjustable label scale multiplier
   const jigglingRef    = useRef(false)    // true while jiggle animation running
 
-  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string } | null>(null)
+  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string, hex: string } | null>(null)
   const clickRef = useRef<{ time: number, id: string | null }>({ time: 0, id: null })
+  
+  // Custom ref to store latest renamer state for the click-away listener
+  const latestRenamerRef = useRef(renamer)
+  useEffect(() => { latestRenamerRef.current = renamer }, [renamer])
+
+  const commitRenamer = useCallback((finalRenamer: NonNullable<typeof renamer>) => {
+    isCommittingRef.current = true
+    const val = finalRenamer.label.trim()
+    if (val) {
+      if (finalRenamer.id === null) {
+        // Create brand new node
+        if (engineRef.current?.simNodes.find(n => n.id === val)) {
+          alert("A node with this name already exists!")
+          isCommittingRef.current = false
+          return
+        }
+        engineRef.current?.addNode({
+          id: val,
+          label: val,
+          hex: finalRenamer.hex,
+          category: 'concept',
+          icon: '📄',
+          content: 'nothing',
+          connections: finalRenamer.sourceNodeId ? [finalRenamer.sourceNodeId] : []
+        })
+        if (finalRenamer.sourceNodeId) {
+          engineRef.current?.addEdge(finalRenamer.sourceNodeId, val)
+        }
+      } else {
+        // Rename existing node
+        const obj = nodeObjsRef.current.find(o => o.node.id === finalRenamer.id)
+        if (obj) {
+          obj.node.label = val
+          engineRef.current?.updateNode({ ...obj.node, label: val, hex: finalRenamer.hex })
+          const { sprite, sprMat } = buildLabelSprite(val, nodeIconsEnabledRef.current ? obj.node.icon : undefined)
+          const scene = sceneRef.current
+          if (scene) {
+            if (obj.node._sprite) scene.remove(obj.node._sprite)
+            sprite.renderOrder = 999
+            scene.add(sprite)
+            obj.node._sprite = sprite
+            obj.node._sprMat = sprMat
+            obj.sprMat = sprMat
+          }
+        }
+        if (onNodeRename) {
+          // Trigger the host app to save the new label and colors!
+          // We can cheat this by calling onNodeRename and then forcing a sync via the engine
+          onNodeRename(finalRenamer.id, val)
+        }
+      }
+    }
+  }, [onNodeRename])
+
+  // Click-away to close renamer
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const el = document.getElementById('renamer-modal')
+      if (el && !el.contains(e.target as Node)) {
+        if (!isCommittingRef.current) {
+          if (latestRenamerRef.current) {
+            commitRenamer(latestRenamerRef.current)
+          }
+          setRenamer(null)
+        }
+      }
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [commitRenamer])
 
   // Held arrow keys: each key maps to how long it's been held (for acceleration)
   const heldKeysRef = useRef<Set<string>>(new Set())
@@ -723,7 +793,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             
             const hit = getHit(e.clientX, e.clientY)
             if (hit && 'node' in hit) {
-              setRenamer({ id: null, label: '', cx: e.clientX, cy: e.clientY, sourceNodeId: hit.node.id })
+              setRenamer({ id: null, label: '', cx: e.clientX, cy: e.clientY, sourceNodeId: hit.node.id, hex: '#ffffff' })
             }
           } else {
             // Standard double-click rename & click-to-open logic
@@ -750,7 +820,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
                   if (clickRef.current.id === id && now - clickRef.current.time < 350) {
                     // Double click!
                     doubleClickedSprite = true
-                    setRenamer({ id, label: matchObj.node.label, cx: e.clientX, cy: e.clientY })
+                    setRenamer({ id, label: matchObj.node.label, cx: e.clientX, cy: e.clientY, hex: matchObj.node.hex })
                     clickRef.current = { time: 0, id: null }
                   } else {
                     clickRef.current = { time: now, id }
@@ -1334,68 +1404,51 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       <AnimatePresence>
         {renamer && (
           <motion.div
+            id="renamer-modal"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute z-50 -translate-x-1/2 -translate-y-1/2 shadow-2xl rounded-lg overflow-hidden border border-accent/40"
+            className="absolute z-50 -translate-x-1/2 -translate-y-1/2 shadow-2xl rounded-lg overflow-hidden border border-accent/40 bg-surface/95 flex items-center p-1.5 gap-2"
             style={{ left: renamer.cx, top: renamer.cy }}
           >
             <input
               autoFocus
               value={renamer.label}
               onChange={e => setRenamer({ ...renamer, label: e.target.value })}
-              onBlur={() => { if (!isCommittingRef.current) setRenamer(null) }}
+              placeholder="Node Name"
               onKeyDown={e => {
                 if (e.key === 'Enter') {
-                  isCommittingRef.current = true
-                  const val = renamer.label.trim()
-                  if (val) {
-                    if (renamer.id === null) {
-                      // Create brand new node
-                      if (engineRef.current?.simNodes.find(n => n.id === val)) {
-                        alert("A node with this name already exists!")
-                        isCommittingRef.current = false
-                        return
-                      }
-                      engineRef.current?.addNode({
-                        id: val,
-                        label: val,
-                        hex: '#ffffff',
-                        category: 'concept',
-                        icon: '📄',
-                        content: 'nothing',
-                        connections: renamer.sourceNodeId ? [renamer.sourceNodeId] : []
-                      })
-                      if (renamer.sourceNodeId) {
-                        engineRef.current?.addEdge(renamer.sourceNodeId, val)
-                      }
-                    } else {
-                      // Rename existing node
-                      if (onNodeRename) onNodeRename(renamer.id, val)
-                      const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
-                      if (obj) {
-                        obj.node.label = val
-                        const { sprite, sprMat } = buildLabelSprite(val, nodeIconsEnabledRef.current ? obj.node.icon : undefined)
-                        const scene = sceneRef.current
-                        if (scene) {
-                          if (obj.node._sprite) scene.remove(obj.node._sprite)
-                          sprite.renderOrder = 999
-                          scene.add(sprite)
-                          obj.node._sprite = sprite
-                          obj.node._sprMat = sprMat
-                          obj.sprMat = sprMat
-                        }
-                      }
-                    }
-                  }
+                  commitRenamer(renamer)
                   setRenamer(null)
                   setTimeout(() => { isCommittingRef.current = false }, 100)
                 }
                 if (e.key === 'Escape') setRenamer(null)
               }}
-              className="bg-surface/95 text-text px-3 py-1.5 min-w-[120px] max-w-[300px] text-center text-sm font-medium tracking-wide outline-none focus:bg-surface"
+              className="bg-transparent text-text px-2 py-1 min-w-[120px] max-w-[250px] text-center text-sm font-medium tracking-wide outline-none"
               style={{ width: `${Math.max(120, renamer.label.length * 10)}px` }}
             />
+            
+            {/* Color Picker Button inside the renamer dialog */}
+            <div 
+              className="relative w-6 h-6 rounded border border-border flex-shrink-0 cursor-pointer shadow-inner overflow-hidden flex items-center justify-center transition-transform hover:scale-105"
+              style={{ backgroundColor: renamer.hex }}
+              title="Change Color"
+            >
+              <input 
+                type="color" 
+                value={renamer.hex}
+                onChange={e => {
+                  setRenamer({ ...renamer, hex: e.target.value })
+                  if (renamer.id) {
+                    const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
+                    if (obj) {
+                      if (engineRef.current) engineRef.current.updateNode({ ...obj.node, hex: e.target.value })
+                    }
+                  }
+                }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 opacity-0 cursor-pointer"
+              />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1568,7 +1621,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           >
             <button
               onClick={() => {
-                setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: contextMenu.hitNodeId ?? undefined })
+                setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: contextMenu.hitNodeId ?? undefined, hex: '#ffffff' })
                 setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
               }}
               className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
@@ -1581,7 +1634,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
                 <button
                   onClick={() => {
                     const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
-                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y })
+                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
                     setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
                   }}
                   className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
@@ -1590,13 +1643,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
                 </button>
                 <button
                   onClick={() => {
-                    const node = engineRef.current?.simNodes.find(n => n.id === contextMenu.hitNodeId)
-                    if (node && engineRef.current) {
-                      // Bright vibrant colours
-                      const colours = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6', '#2dd4bf', '#a3e635']
-                      const newColor = colours[Math.floor(Math.random() * colours.length)]
-                      engineRef.current.updateNode({ ...node, hex: newColor })
-                    }
+                    const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
+                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
                     setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
                   }}
                   className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
