@@ -132,6 +132,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const raycasterRef = useRef(new THREE.Raycaster())
   const mouse2Ref    = useRef(new THREE.Vector2())
   const tooltipRef   = useRef<HTMLDivElement>(null)
+  const previewRef   = useRef<HTMLDivElement>(null)
 
   const mouseRef    = useRef({ down: false, right: false, middle: false, shift: false, totalDist: 0, last: { x: 0, y: 0 }, start: { x: 0, y: 0 } })
   const autoRotEnabledRef = useRef(sessionStorage.getItem('idleRotate') !== 'false')
@@ -141,6 +142,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const edgeDragEnabledRef = useRef(sessionStorage.getItem('edgeDrag') === 'true')
   const nodeIconsEnabledRef = useRef(sessionStorage.getItem('showNodeIcons') !== 'false')
   const lockCameraEnabledRef = useRef(sessionStorage.getItem('lockCamera') !== 'false')
+  const hoverPreviewEnabledRef = useRef(sessionStorage.getItem('hoverPreview') === 'true')
   const lockedNodeIdRef = useRef<string | null>(null)
   const idleTRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const animRef     = useRef(0)
@@ -167,6 +169,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [showSavedToast, setShowSavedToast] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [hoverPreviewOn, setHoverPreviewOn] = useState(() => sessionStorage.getItem('hoverPreview') === 'true')
   const isCommittingRef = useRef(false)
   
   const [editingTitle, setEditingTitle] = useState(false)
@@ -230,19 +233,61 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   }, [])
 
   const showTooltip = useCallback((cx: number, cy: number, hit: NodeObj | LinkObj | null) => {
-    const tt = tooltipRef.current
-    if (!tt) return
-    if (hit) {
+    const tt      = tooltipRef.current
+    const preview = previewRef.current
+    if (!tt || !preview) return
+
+    if (!hit) {
+      tt.style.opacity      = '0'
+      preview.style.opacity = '0'
+      return
+    }
+
+    if (!hoverPreviewEnabledRef.current) {
+      // ── Simple label tooltip (existing behaviour) ──────────────────────────
+      preview.style.opacity = '0'
       tt.style.opacity = '1'
       tt.style.left = `${cx + 14}px`
-      tt.style.top = `${cy - 8}px`
+      tt.style.top  = `${cy - 8}px`
       if ('node' in hit) {
         tt.textContent = `${hit.node.icon} ${hit.node.label}`
       } else {
         tt.textContent = `${hit.source.label} ↔ ${hit.target.label}`
       }
     } else {
+      // ── Rich preview popup ─────────────────────────────────────────────────
       tt.style.opacity = '0'
+
+      if ('node' in hit) {
+        const node = hit.node
+        // Build inner HTML: header + divider + scrollable content
+        preview.innerHTML = [
+          `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">`,
+          `<span style="font-size:15px;line-height:1">${node.icon}</span>`,
+          `<strong style="font-size:11px;color:var(--text);letter-spacing:.04em;line-height:1.2">${node.label}</strong>`,
+          `</div>`,
+          `<div style="height:1px;background:var(--border);margin-bottom:7px"></div>`,
+          `<div style="font-size:10.5px;color:var(--muted2);line-height:1.65">${node.content || '<em>No content</em>'}</div>`,
+        ].join('')
+
+        // Clamp position to viewport
+        const W = window.innerWidth, H = window.innerHeight
+        const pw = 264, ph = 220
+        const left = cx + 18 + pw > W ? cx - pw - 10 : cx + 18
+        const top  = cy - 8 + ph > H ? H - ph - 12  : cy - 8
+
+        preview.style.left    = `${left}px`
+        preview.style.top     = `${top}px`
+        preview.style.opacity = '1'
+        preview.scrollTop     = 0
+      } else {
+        // Edge hover — fall back to simple tooltip
+        tt.style.left    = `${cx + 14}px`
+        tt.style.top     = `${cy - 8}px`
+        tt.textContent   = `${hit.source.label} ↔ ${hit.target.label}`
+        tt.style.opacity = '1'
+        preview.style.opacity = '0'
+      }
     }
   }, [])
 
@@ -397,8 +442,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── resize ────────────────────────────────────────────────────────────────────
-  useEffect(() => { window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [resize])
+  // ── resize — use ResizeObserver on the container so sidebar open/close
+  // (which can fire spurious window resize events in some browsers) never
+  // triggers a false renderer resize and camera-aspect snap.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const ro = new ResizeObserver(() => resize())
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [resize])
 
   // ── keyboard: arrow keys + shift+arrow ───────────────────────────────────────
   useEffect(() => {
@@ -1076,7 +1129,18 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
         <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
         <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
-        
+
+        {/* Home button — right of the three circles */}
+        <button
+          onClick={onGoHome}
+          title="Go Home"
+          className="pointer-events-auto ml-1 flex items-center justify-center w-6 h-6 rounded-md border border-border2/60 bg-surface/70 backdrop-blur-sm text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
+        >
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+        </button>
         <div className="ml-2 flex items-center pointer-events-auto">
           {editingTitle ? (
             <input
@@ -1181,6 +1245,32 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
+        {/* Hover Preview toggle */}
+        <button
+          onClick={() => {
+            const next = !hoverPreviewEnabledRef.current
+            hoverPreviewEnabledRef.current = next
+            sessionStorage.setItem('hoverPreview', String(next))
+            setHoverPreviewOn(next)
+            // Hide both tooltips immediately on toggle
+            if (tooltipRef.current) tooltipRef.current.style.opacity = '0'
+            if (previewRef.current)  previewRef.current.style.opacity  = '0'
+          }}
+          title={hoverPreviewOn ? 'Detailed Hover Preview: ON' : 'Detailed Hover Preview: OFF'}
+          className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            hoverPreviewOn
+              ? 'border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]'
+              : 'border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
+          }`}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="5" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="19"/>
+          </svg>
+        </button>
+
         <button onClick={handleSaveClick} title="Save Graph"
           className="flex items-center justify-center w-8 h-8 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1225,10 +1315,25 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       {/* Mobile D-Pad — hidden on md+ */}
       <DPad onAction={handleDPadAction} isDark={isDark} />
 
-      {/* Tooltip */}
+      {/* Tooltip — simple label */}
       <div ref={tooltipRef}
         className="fixed pointer-events-none opacity-0 transition-opacity duration-100 z-[1000] px-3.5 py-1.5 rounded-md border border-border text-xs text-text backdrop-blur-md"
         style={{ background: tooltipBg }}
+      />
+
+      {/* Rich hover preview popup */}
+      <div
+        ref={previewRef}
+        className="fixed pointer-events-none opacity-0 z-[1001] rounded-xl border border-border shadow-2xl backdrop-blur-md overflow-y-auto"
+        style={{
+          background: tooltipBg,
+          width: '264px',
+          maxHeight: '220px',
+          padding: '10px 12px',
+          transition: 'opacity 0.12s ease',
+          // Custom thin scrollbar
+          scrollbarWidth: 'thin',
+        }}
       />
     </div>
   )

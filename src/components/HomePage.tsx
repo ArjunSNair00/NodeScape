@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GraphRecord, GraphData } from '../types/graph'
 import { DEFAULT_GRAPH } from '../data/defaultGraph'
@@ -14,6 +14,8 @@ interface Props {
   onToggleTheme: () => void
 }
 
+type SortMode = 'createdAt' | 'updatedAt' | 'name' | 'custom'
+
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
   const m = Math.floor(diff / 60000)
@@ -26,7 +28,6 @@ function timeAgo(ts: number): string {
 
 // Mini preview of a graph — just coloured node dots in a rough force layout
 function GraphPreview({ data }: { data: GraphData }) {
-  // Use a simple deterministic seed to place nodes in a circle
   const nodes = data.nodes.slice(0, 12)
   const w = 280, h = 140, cx = w / 2, cy = h / 2, r = 50
 
@@ -71,11 +72,26 @@ function GraphPreview({ data }: { data: GraphData }) {
   )
 }
 
-function GraphCard({ record, onOpen, onDelete, onRename }: {
+function GraphCard({
+  record,
+  onOpen,
+  onDelete,
+  onRename,
+  isDraggable,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  isDraggedOver,
+}: {
   record: GraphRecord
   onOpen: () => void
   onDelete: () => void
   onRename: (t: string) => void
+  isDraggable: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: () => void
+  isDraggedOver: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(record.title)
@@ -93,9 +109,34 @@ function GraphCard({ record, onOpen, onDelete, onRename }: {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="group relative flex flex-col rounded-xl border border-border bg-surface overflow-hidden cursor-pointer hover:border-border2 transition-all duration-200 hover:shadow-lg hover:shadow-black/20"
+      draggable={isDraggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={`group relative flex flex-col rounded-xl border bg-surface overflow-hidden cursor-pointer hover:border-border2 transition-all duration-200 hover:shadow-lg hover:shadow-black/20 ${
+        isDraggedOver ? 'border-accent shadow-[0_0_0_2px_rgba(124,106,247,0.35)]' : 'border-border'
+      }`}
       onClick={() => { if (!editing && !confirmDelete) onOpen() }}
     >
+      {/* Drag handle — only shown in custom sort mode */}
+      {isDraggable && (
+        <div
+          className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab active:cursor-grabbing p-1 rounded text-muted2 hover:text-accent"
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+          title="Drag to reorder"
+        >
+          <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="5.5" cy="4" r="1.2" />
+            <circle cx="5.5" cy="8" r="1.2" />
+            <circle cx="5.5" cy="12" r="1.2" />
+            <circle cx="10.5" cy="4" r="1.2" />
+            <circle cx="10.5" cy="8" r="1.2" />
+            <circle cx="10.5" cy="12" r="1.2" />
+          </svg>
+        </div>
+      )}
+
       {/* Preview */}
       <div className="relative h-36 bg-surface2 overflow-hidden flex items-center justify-center"
         style={{ background: 'radial-gradient(ellipse at center, rgba(124,106,247,0.06) 0%, transparent 70%)' }}>
@@ -162,10 +203,82 @@ function GraphCard({ record, onOpen, onDelete, onRename }: {
   )
 }
 
+const ORDER_KEY = 'nodescape-card-order'
+
+function getSavedOrder(): string[] {
+  try { return JSON.parse(localStorage.getItem(ORDER_KEY) ?? '[]') } catch { return [] }
+}
+
+function saveOrder(ids: string[]) {
+  localStorage.setItem(ORDER_KEY, JSON.stringify(ids))
+}
+
+function sortRecords(records: GraphRecord[], mode: SortMode, customOrder: string[]): GraphRecord[] {
+  if (mode === 'custom') {
+    const ordered: GraphRecord[] = []
+    customOrder.forEach(id => { const r = records.find(r => r.id === id); if (r) ordered.push(r) })
+    records.forEach(r => { if (!customOrder.includes(r.id)) ordered.push(r) })
+    return ordered
+  }
+  const copy = [...records]
+  if (mode === 'name') copy.sort((a, b) => a.title.localeCompare(b.title))
+  else if (mode === 'updatedAt') copy.sort((a, b) => b.updatedAt - a.updatedAt)
+  else copy.sort((a, b) => b.createdAt - a.createdAt) // createdAt default
+  return copy
+}
+
 export default function HomePage({ records, theme, onOpen, onCreate, onDelete, onRename, onToggleTheme }: Props) {
   const isDark = theme === 'dark'
   const [showDocs, setShowDocs] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
+  const [sortMode, setSortMode] = useState<SortMode>('createdAt')
+  const [customOrder, setCustomOrder] = useState<string[]>(() => getSavedOrder())
+  const dragIdRef = useRef<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+
+  // Sync custom order when records change (new record added etc.)
+  useEffect(() => {
+    const existing = getSavedOrder()
+    const newIds = records.map(r => r.id).filter(id => !existing.includes(id))
+    if (newIds.length > 0) {
+      const merged = [...existing, ...newIds]
+      setCustomOrder(merged)
+      saveOrder(merged)
+    }
+  }, [records])
+
+  const sorted = sortRecords(records, sortMode, customOrder)
+
+  const handleDragStart = (id: string) => { dragIdRef.current = id }
+  const handleDragOver = (e: React.DragEvent, overId: string) => {
+    e.preventDefault()
+    setDragOverId(overId)
+  }
+  const handleDrop = (targetId: string) => {
+    const fromId = dragIdRef.current
+    if (!fromId || fromId === targetId) { setDragOverId(null); return }
+
+    // Build current ordered list of IDs
+    const base = sortRecords(records, 'custom', customOrder).map(r => r.id)
+    const fromIdx = base.indexOf(fromId)
+    const toIdx = base.indexOf(targetId)
+    if (fromIdx === -1 || toIdx === -1) { setDragOverId(null); return }
+
+    const next = [...base]
+    next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, fromId)
+    setCustomOrder(next)
+    saveOrder(next)
+    dragIdRef.current = null
+    setDragOverId(null)
+  }
+
+  const SORT_TABS: { id: SortMode; label: string }[] = [
+    { id: 'createdAt', label: 'Created' },
+    { id: 'updatedAt', label: 'Modified' },
+    { id: 'name',      label: 'Name' },
+    { id: 'custom',    label: 'Custom' },
+  ]
 
   return (
     <motion.div
@@ -177,18 +290,22 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
       className="absolute inset-0 flex flex-col overflow-hidden bg-bg"
     >
       {/* Top bar */}
-      <div className="flex items-center justify-between px-8 py-5 border-b border-border flex-shrink-0"
+      <div className="relative flex items-center px-8 py-5 border-b border-border flex-shrink-0"
         style={{ background: isDark ? 'rgba(8,8,16,0.96)' : 'rgba(244,244,251,0.96)' }}>
+
+        {/* Left — traffic lights + title */}
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
           </div>
-          <span className="text-[13px] font-medium text-text tracking-wide ml-1">NodeScape</span>
+          <span className="text-[22px] font-semibold text-text tracking-wide leading-none">NodeScape</span>
           <span className="text-[10px] text-muted tracking-widest border border-border px-2 py-0.5 rounded-full">v1.0.0</span>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right — actions */}
+        <div className="flex items-center gap-2 ml-auto">
           <button
             onClick={onToggleTheme}
             className="flex items-center justify-center w-8 h-8 rounded-lg border border-border2 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
@@ -258,18 +375,48 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
           </div>
         ) : (
           <>
+            {/* Toolbar: count + sort controls */}
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-[11px] text-muted tracking-widest uppercase">Your Graphs · {records.length}</h2>
+
+              {/* Sort pills */}
+              <div className="flex items-center gap-1 p-1 rounded-lg border border-border bg-surface">
+                {SORT_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSortMode(tab.id)}
+                    className={`px-3 py-1 rounded-md text-[10px] tracking-widest transition-all duration-150 ${
+                      sortMode === tab.id
+                        ? 'bg-accent text-white shadow-sm'
+                        : 'text-muted2 hover:text-text'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {sortMode === 'custom' && (
+              <p className="text-[10px] text-muted tracking-wide mb-4 -mt-2">
+                Hover a card and drag the ⠿ handle to reorder
+              </p>
+            )}
+
             <motion.div layout className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
               <AnimatePresence mode="popLayout">
-                {records.map(r => (
+                {sorted.map(r => (
                   <GraphCard
                     key={r.id}
                     record={r}
                     onOpen={() => onOpen(r)}
                     onDelete={() => onDelete(r.id)}
                     onRename={title => onRename(r.id, title)}
+                    isDraggable={sortMode === 'custom'}
+                    onDragStart={() => handleDragStart(r.id)}
+                    onDragOver={e => handleDragOver(e, r.id)}
+                    onDrop={() => handleDrop(r.id)}
+                    isDraggedOver={dragOverId === r.id && dragIdRef.current !== r.id}
                   />
                 ))}
               </AnimatePresence>
@@ -277,7 +424,8 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
           </>
         )}
       </div>
-      {/* Footer/Docs Toggle */}
+
+      {/* Footer */}
       <div className="px-8 py-4 border-t border-border flex justify-center gap-6 flex-shrink-0"
            style={{ background: isDark ? 'rgba(8,8,16,0.96)' : 'rgba(244,244,251,0.96)' }}>
         <button
@@ -396,7 +544,7 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
               <section>
                 <h3 className="text-muted font-medium text-xs tracking-widest uppercase mb-2">Tech Stack</h3>
                 <ul className="list-disc pl-5 mt-2 text-muted2 space-y-1">
-                  <li><strong>React & TypeScript</strong> for a robust UI and frontend state management.</li>
+                  <li><strong>React &amp; TypeScript</strong> for a robust UI and frontend state management.</li>
                   <li><strong>Three.js</strong> for performant WebGL 3D rendering.</li>
                   <li><strong>d3-force-3d</strong> to smoothly calculate and simulate force-directed layouts.</li>
                   <li><strong>Framer Motion</strong> for fluid page and component animations.</li>
@@ -407,7 +555,7 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
               <section>
                 <h3 className="text-muted font-medium text-xs tracking-widest uppercase mb-2">Future Plans</h3>
                 <ul className="list-disc pl-5 mt-2 text-muted2 space-y-1">
-                  <li><strong>Local & Cloud AI Generation:</strong> Integrating an embedded <strong>Ollama model</strong> to generate custom 3D knowledge nodes completely on the fly using local AI. We also plan to support connecting directly to <strong>Cloud AI APIs</strong> (like OpenAI, Anthropic, etc.) for generation without manual copy-pasting.</li>
+                  <li><strong>Local &amp; Cloud AI Generation:</strong> Integrating an embedded <strong>Ollama model</strong> to generate custom 3D knowledge nodes completely on the fly using local AI. We also plan to support connecting directly to <strong>Cloud AI APIs</strong> (like OpenAI, Anthropic, etc.) for generation without manual copy-pasting.</li>
                   <li><strong>Document Knowledge Extraction:</strong> Ability to upload PDFs, images, and other document types directly into NodeScape. The system will automatically process these files, extract deeply nested knowledge, and instantly generate the corresponding nodes and edges to visualize the document's concepts.</li>
                 </ul>
               </section>
