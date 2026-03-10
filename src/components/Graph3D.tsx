@@ -157,7 +157,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const labelMultRef   = useRef(0.3 + ((Number(sessionStorage.getItem('labelLevel') || 5) - 1) / 8) * 1.9)        // user-adjustable label scale multiplier
   const jigglingRef    = useRef(false)    // true while jiggle animation running
 
-  const [renamer, setRenamer] = useState<{ id: string, label: string, cx: number, cy: number } | null>(null)
+  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string } | null>(null)
   const clickRef = useRef<{ time: number, id: string | null }>({ time: 0, id: null })
 
   // Held arrow keys: each key maps to how long it's been held (for acceleration)
@@ -723,10 +723,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             
             const hit = getHit(e.clientX, e.clientY)
             if (hit && 'node' in hit) {
-              const id = crypto.randomUUID()
-              engineRef.current?.addNode({ id, label: 'New Node', hex: '#ffffff', category: 'concept', icon: '📄', content: '', connections: [hit.node.id] })
-              engineRef.current?.addEdge(hit.node.id, id)
-              setRenamer({ id, label: '', cx: e.clientX, cy: e.clientY })
+              setRenamer({ id: null, label: '', cx: e.clientX, cy: e.clientY, sourceNodeId: hit.node.id })
             }
           } else {
             // Standard double-click rename & click-to-open logic
@@ -1353,19 +1350,41 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
                   isCommittingRef.current = true
                   const val = renamer.label.trim()
                   if (val) {
-                    if (onNodeRename) onNodeRename(renamer.id, val)
-                    const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
-                    if (obj) {
-                      obj.node.label = val
-                      const { sprite, sprMat } = buildLabelSprite(val, nodeIconsEnabledRef.current ? obj.node.icon : undefined)
-                      const scene = sceneRef.current
-                      if (scene) {
-                        if (obj.node._sprite) scene.remove(obj.node._sprite)
-                        sprite.renderOrder = 999
-                        scene.add(sprite)
-                        obj.node._sprite = sprite
-                        obj.node._sprMat = sprMat
-                        obj.sprMat = sprMat
+                    if (renamer.id === null) {
+                      // Create brand new node
+                      if (engineRef.current?.simNodes.find(n => n.id === val)) {
+                        alert("A node with this name already exists!")
+                        isCommittingRef.current = false
+                        return
+                      }
+                      engineRef.current?.addNode({
+                        id: val,
+                        label: val,
+                        hex: '#ffffff',
+                        category: 'concept',
+                        icon: '📄',
+                        content: 'nothing',
+                        connections: renamer.sourceNodeId ? [renamer.sourceNodeId] : []
+                      })
+                      if (renamer.sourceNodeId) {
+                        engineRef.current?.addEdge(renamer.sourceNodeId, val)
+                      }
+                    } else {
+                      // Rename existing node
+                      if (onNodeRename) onNodeRename(renamer.id, val)
+                      const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
+                      if (obj) {
+                        obj.node.label = val
+                        const { sprite, sprMat } = buildLabelSprite(val, nodeIconsEnabledRef.current ? obj.node.icon : undefined)
+                        const scene = sceneRef.current
+                        if (scene) {
+                          if (obj.node._sprite) scene.remove(obj.node._sprite)
+                          sprite.renderOrder = 999
+                          scene.add(sprite)
+                          obj.node._sprite = sprite
+                          obj.node._sprMat = sprMat
+                          obj.sprMat = sprMat
+                        }
                       }
                     }
                   }
@@ -1549,10 +1568,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           >
             <button
               onClick={() => {
-                const id = crypto.randomUUID()
-                engineRef.current?.addNode({ id, label: 'New Node', hex: '#ffffff', category: 'concept', icon: '📄', content: '', connections: contextMenu.hitNodeId ? [contextMenu.hitNodeId] : [] })
-                if (contextMenu.hitNodeId) engineRef.current?.addEdge(contextMenu.hitNodeId, id)
-                setRenamer({ id, label: '', cx: contextMenu.x, cy: contextMenu.y })
+                setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: contextMenu.hitNodeId ?? undefined })
                 setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
               }}
               className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
