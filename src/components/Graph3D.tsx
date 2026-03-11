@@ -26,6 +26,7 @@ interface Props {
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
 type DPadMode = 'pan' | 'rotate'
+type MarqueeMode = 'none' | 'rect' | 'freehand'
 
 function DPad({
   onAction,
@@ -157,7 +158,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const labelMultRef   = useRef(0.3 + ((Number(sessionStorage.getItem('labelLevel') || 5) - 1) / 8) * 1.9)        // user-adjustable label scale multiplier
   const jigglingRef    = useRef(false)    // true while jiggle animation running
 
-  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string, hex: string } | null>(null)
+  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string, hex: string, isBulkColor?: boolean } | null>(null)
   const clickRef = useRef<{ time: number, id: string | null }>({ time: 0, id: null })
   
   // Custom ref to store latest renamer state for the click-away listener
@@ -167,6 +168,22 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const commitRenamer = useCallback((finalRenamer: NonNullable<typeof renamer>) => {
     isCommittingRef.current = true
     const val = finalRenamer.label.trim()
+    
+    if (finalRenamer.isBulkColor) {
+      if (!engineRef.current) return
+      // Apply color to all selected
+      const ids = Array.from(selectedNodeIdsRef.current)
+      ids.forEach(sid => {
+        const obj = nodeObjsRef.current.find(o => o.node.id === sid)
+        if (obj) {
+          engineRef.current!.updateNode({ ...obj.node, hex: finalRenamer.hex })
+          if (onNodeRename) onNodeRename(sid, obj.node.label) // Trigger fresh data save
+        }
+      })
+      isCommittingRef.current = false
+      return
+    }
+
     if (val) {
       if (finalRenamer.id === null) {
         // Create brand new node
@@ -185,7 +202,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           connections: finalRenamer.sourceNodeId ? [finalRenamer.sourceNodeId] : []
         })
         if (finalRenamer.sourceNodeId) {
-          engineRef.current?.addEdge(finalRenamer.sourceNodeId, val)
+          // If the sourceNodeId is the special bulk connect flag, connect to all selected
+          if (finalRenamer.sourceNodeId === '__BULK_CONNECT__') {
+             const ids = Array.from(selectedNodeIdsRef.current)
+             ids.forEach(sid => engineRef.current?.addEdge(sid, val))
+          } else {
+             engineRef.current?.addEdge(finalRenamer.sourceNodeId, val)
+          }
         }
       } else {
         // Rename existing node
@@ -205,8 +228,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           }
         }
         if (onNodeRename) {
-          // Trigger the host app to save the new label and colors!
-          // We can cheat this by calling onNodeRename and then forcing a sync via the engine
           onNodeRename(finalRenamer.id, val)
         }
       }
@@ -248,6 +269,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [hoverPreviewOn, setHoverPreviewOn] = useState(() => sessionStorage.getItem('hoverPreview') === 'true')
   const [isManualMode, setIsManualMode] = useState(false)
+  
+  // Marquee states
+  const [marqueeMode, setMarqueeMode] = useState<MarqueeMode>('none')
+  const [marqueeMenuOpen, setMarqueeMenuOpen] = useState(false)
+  
+  const selectedNodeIdsRef = useRef<Set<string>>(new Set())
+  const marqueeStartRef = useRef<{ x: number, y: number } | null>(null)
+  const marqueePathRef = useRef<{ x: number, y: number }[]>([])
+  const marqueePolygonRef = useRef<SVGPolygonElement>(null)
+  const marqueeRectRef = useRef<SVGRectElement>(null)
   const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, hitNodeId: string | null }>({ visible: false, x: 0, y: 0, hitNodeId: null })
   const isCommittingRef = useRef(false)
   
@@ -514,8 +545,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         const hoverIsLink = hovObjRef.current && 'source' in hovObjRef.current
         
         const isHoveredNode = hoverIsNode && o.node.id === (hovObjRef.current as NodeObj).node.id
+        const isSelected = selectedNodeIdsRef.current.has(o.node.id)
         
-        if (!isHoveredNode) {
+        if (isSelected) {
+          o.glowMat.opacity = 0.5 + 0.2 * Math.sin(tRef.current * 4.0)
+          o.glowMat.color.setHex(0x7c6af7) // Accent color override
+        } else if (!isHoveredNode) {
           const p = 1 + 0.18 * Math.sin(tRef.current * 1.6 + i * 0.9)
           let base = 0.055
           
@@ -527,6 +562,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           }
           
           o.glowMat.opacity = base * p
+          o.glowMat.color.set(o.mat.color) // Restore original color if it was selected previously
         }
       })
 
@@ -593,6 +629,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   }, [kickIdle])
 
   // ── mouse events ──────────────────────────────────────────────────────────────
+  // Keep track of the active marquee mode via ref strictly for event listeners to avoid stale closures
+  const activeMarqueeModeRef = useRef(marqueeMode)
+  useEffect(() => { activeMarqueeModeRef.current = marqueeMode }, [marqueeMode])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -611,6 +651,35 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
         start: { x: e.clientX, y: e.clientY },
       }
 
+      const activeMM = activeMarqueeModeRef.current
+      if (activeMM !== 'none' && e.button === 0 && !isShift) {
+        // Start Marquee Select
+        marqueeStartRef.current = { x: e.clientX, y: e.clientY }
+        marqueePathRef.current = [{ x: e.clientX, y: e.clientY }]
+        
+        // Clear if not holding multi-select modifier (windows: ctrl, mac: meta. let's just use meta/ctrl or shift)
+        if (!e.ctrlKey && !e.metaKey) {
+          selectedNodeIdsRef.current.clear()
+        }
+        
+        if (activeMM === 'rect') {
+          if (marqueeRectRef.current) {
+            marqueeRectRef.current.classList.remove('hidden')
+            marqueeRectRef.current.setAttribute('x', String(e.clientX))
+            marqueeRectRef.current.setAttribute('y', String(e.clientY))
+            marqueeRectRef.current.setAttribute('width', '0')
+            marqueeRectRef.current.setAttribute('height', '0')
+          }
+        } else if (activeMM === 'freehand') {
+          if (marqueePolygonRef.current) {
+            marqueePolygonRef.current.classList.remove('hidden')
+            marqueePolygonRef.current.setAttribute('points', `${e.clientX},${e.clientY}`)
+          }
+        }
+        return
+      }
+
+      // Check context menu for marquee selection (Right-click inside a selected node or while holding shift)
       if (e.button === 2 && lockCameraEnabledRef.current) {
         const hit = getHit(e.clientX, e.clientY)
         if (hit && 'node' in hit) {
@@ -665,6 +734,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           canvas.style.cursor = 'grabbing'
           if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
         }
+      } else if (e.button === 2 && lockCameraEnabledRef.current) {
+        const hit = getHit(e.clientX, e.clientY)
+        if (hit && 'node' in hit) {
+          lockedNodeIdRef.current = hit.node.id
+        }
       }
     }
 
@@ -676,6 +750,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       m.last = { x: e.clientX, y: e.clientY }
 
       if (m.down) {
+        if (marqueeStartRef.current) {
+          const pt = { x: e.clientX, y: e.clientY }
+          marqueePathRef.current.push(pt)
+          
+          if (activeMarqueeModeRef.current === 'rect') {
+            const start = marqueeStartRef.current
+            const rx = Math.min(start.x, pt.x)
+            const ry = Math.min(start.y, pt.y)
+            const rw = Math.abs(pt.x - start.x)
+            const rh = Math.abs(pt.y - start.y)
+            if (marqueeRectRef.current) {
+              marqueeRectRef.current.setAttribute('x', String(rx))
+              marqueeRectRef.current.setAttribute('y', String(ry))
+              marqueeRectRef.current.setAttribute('width', String(rw))
+              marqueeRectRef.current.setAttribute('height', String(rh))
+            }
+          } else if (activeMarqueeModeRef.current === 'freehand') {
+            if (marqueePolygonRef.current) {
+              marqueePolygonRef.current.setAttribute('points', marqueePathRef.current.map(p => `${p.x},${p.y}`).join(' '))
+            }
+          }
+          return
+        }
+
         if (draftEdgeRef.current) {
           const rect = canvas.getBoundingClientRect()
           mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
@@ -774,15 +872,69 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
     const onMouseUp = (e: MouseEvent) => {
       const m = mouseRef.current
-      if (m.totalDist < 5 && !draftEdgeRef.current) {
+      if (marqueeStartRef.current) {
+        // Finish Marquee
+        const path = marqueePathRef.current
+        marqueeStartRef.current = null
+        if (marqueeRectRef.current) marqueeRectRef.current.classList.add('hidden')
+        if (marqueePolygonRef.current) marqueePolygonRef.current.classList.add('hidden')
+
+        if (path.length > 2 || (activeMarqueeModeRef.current === 'rect' && path.length > 0)) {
+          const rect = canvas.getBoundingClientRect()
+          const cam = cameraRef.current!
+          
+          // Poly-point in polygon algorithm for freehand, or simple AABB for rect
+          let boundMinX = Infinity, boundMinY = Infinity, boundMaxX = -Infinity, boundMaxY = -Infinity
+          
+          if (activeMarqueeModeRef.current === 'rect') {
+            boundMinX = Math.min(m.start.x, e.clientX)
+            boundMaxX = Math.max(m.start.x, e.clientX)
+            boundMinY = Math.min(m.start.y, e.clientY)
+            boundMaxY = Math.max(m.start.y, e.clientY)
+          }
+
+          const pointInPoly = (px: number, py: number) => {
+            let inside = false
+            for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+              const xi = path[i].x, yi = path[i].y
+              const xj = path[j].x, yj = path[j].y
+              const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+              if (intersect) inside = !inside
+            }
+            return inside
+          }
+
+          const v = new THREE.Vector3()
+          simNodesRef.current.forEach(sn => {
+            v.set(sn.x, sn.y, sn.z)
+            v.project(cam)
+            // Convert from normalized device coordinates to screen pixels
+            const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left
+            const sy = (-(v.y * 0.5) + 0.5) * rect.height + rect.top
+            
+            let isInside = false
+            if (activeMarqueeModeRef.current === 'rect') {
+              isInside = (sx >= boundMinX && sx <= boundMaxX && sy >= boundMinY && sy <= boundMaxY)
+            } else {
+              isInside = pointInPoly(sx, sy)
+            }
+            
+            if (isInside) selectedNodeIdsRef.current.add(sn.id)
+          })
+        }
+      } else if (m.totalDist < 5 && !draftEdgeRef.current) {
         if (m.right) {
-          if (manualModeEnabledRef.current) {
+          if (manualModeEnabledRef.current || selectedNodeIdsRef.current.size > 0) {
             const hit = getHit(e.clientX, e.clientY)
+            const hitId = hit && 'node' in hit ? hit.node.id : null
+            
+            // If they right-clicked a node that ISN'T in the current selection, or right clicked empty space, 
+            // the hitNodeId is just the targeted node (or null)
             setContextMenu({
               visible: true,
               x: e.clientX,
               y: e.clientY,
-              hitNodeId: hit && 'node' in hit ? hit.node.id : null
+              hitNodeId: hitId
             })
           }
         } else if (!m.shift) {
@@ -791,6 +943,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             // Close context menu regardless
             setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
             
+            // If left-click on empty space while manual mode is on and not trying to drag, add a node?
+            // Actually, wait, let's let standard selection clearing happen first
             const hit = getHit(e.clientX, e.clientY)
             if (hit && 'node' in hit) {
               setRenamer({ id: null, label: '', cx: e.clientX, cy: e.clientY, sourceNodeId: hit.node.id, hex: '#ffffff' })
@@ -1400,55 +1554,102 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       {/* Canvas */}
       <canvas ref={canvasRef} className="block w-full h-full touch-none" />
 
+      {/* Marquee Drawing Layer (SVG) */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+        <rect
+          ref={marqueeRectRef}
+          fill="rgba(124,106,247,0.15)"
+          stroke="rgba(124,106,247,0.8)"
+          strokeWidth="1.5"
+          className="hidden"
+        />
+        <polygon
+          ref={marqueePolygonRef}
+          fill="rgba(124,106,247,0.15)"
+          stroke="rgba(124,106,247,0.8)"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          className="hidden"
+        />
+      </svg>
+
       {/* Inline Renamer Overlay */}
       <AnimatePresence>
         {renamer && (
           <motion.div
             id="renamer-modal"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute z-50 -translate-x-1/2 -translate-y-1/2 shadow-2xl rounded-lg overflow-hidden border border-accent/40 bg-surface/95 flex items-center p-1.5 gap-2"
-            style={{ left: renamer.cx, top: renamer.cy }}
+            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            className={`fixed z-[2000] flex items-center gap-1.5 p-1.5 rounded-xl border shadow-2xl backdrop-blur-xl ${
+              isDark ? 'bg-surface/90 border-border2' : 'bg-white/90 border-border'
+            }`}
+            style={{ left: renamer.cx, top: renamer.cy, transform: 'translate(-50%, -100%)', marginTop: '-24px' }}
           >
-            <input
-              autoFocus
-              value={renamer.label}
-              onChange={e => setRenamer({ ...renamer, label: e.target.value })}
-              placeholder="Node Name"
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  commitRenamer(renamer)
-                  setRenamer(null)
-                  setTimeout(() => { isCommittingRef.current = false }, 100)
-                }
-                if (e.key === 'Escape') setRenamer(null)
-              }}
-              className="bg-transparent text-text px-2 py-1 min-w-[120px] max-w-[250px] text-center text-sm font-medium tracking-wide outline-none"
-              style={{ width: `${Math.max(120, renamer.label.length * 10)}px` }}
-            />
-            
-            {/* Color Picker Button inside the renamer dialog */}
-            <div 
-              className="relative w-6 h-6 rounded border border-border flex-shrink-0 cursor-pointer shadow-inner overflow-hidden flex items-center justify-center transition-transform hover:scale-105"
-              style={{ backgroundColor: renamer.hex }}
-              title="Change Color"
-            >
-              <input 
-                type="color" 
-                value={renamer.hex}
-                onChange={e => {
-                  setRenamer({ ...renamer, hex: e.target.value })
-                  if (renamer.id) {
-                    const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
-                    if (obj) {
-                      if (engineRef.current) engineRef.current.updateNode({ ...obj.node, hex: e.target.value })
-                    }
+            {!renamer.isBulkColor && (
+              <input
+                autoFocus
+                type="text"
+                defaultValue={renamer.label}
+                placeholder="Node name..."
+                onKeyDown={e => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') {
+                    commitRenamer({ ...renamer, label: e.currentTarget.value })
+                    setRenamer(null)
+                  }
+                  if (e.key === 'Escape') {
+                    setRenamer(null)
                   }
                 }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 opacity-0 cursor-pointer"
+                onChange={e => { setRenamer(prev => prev ? { ...prev, label: e.target.value } : prev) }}
+                className="w-40 bg-transparent px-2 py-1.5 text-sm outline-none text-text placeholder-muted2"
               />
+            )}
+            {renamer.isBulkColor && (
+              <div className="px-3 py-1.5 text-sm font-medium text-text">Choose Color</div>
+            )}
+            
+            <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-border2 shadow-sm cursor-pointer group">
+              <input 
+                type="color"
+                value={renamer.hex}
+                onChange={e => {
+                  // Real-time update for regular single-node edits
+                  if (!renamer.isBulkColor && renamer.id) {
+                     const obj = nodeObjsRef.current.find(o => o.node.id === renamer.id)
+                     if (obj) obj.node.hex = e.target.value
+                  } else if (renamer.isBulkColor) {
+                     // Real time update for bulk
+                     const ids = Array.from(selectedNodeIdsRef.current)
+                     ids.forEach(sid => {
+                       const obj = nodeObjsRef.current.find(o => o.node.id === sid)
+                       if (obj) obj.node.hex = e.target.value
+                     })
+                  }
+                  setRenamer(prev => prev ? { ...prev, hex: e.target.value } : prev)
+                }}
+                className="absolute inset-[-8px] w-[50px] h-[50px] cursor-pointer"
+              />
+              <div className="absolute inset-0 pointer-events-none ring-1 ring-inset ring-black/10 transition-colors group-hover:ring-black/20" />
             </div>
+            
+            {/* Action buttons inside the renamer for bulk color to make it clear how to apply */}
+            {renamer.isBulkColor && (
+              <div className="flex gap-1 pl-1 border-l border-border2/50 ml-1">
+                <button
+                  onClick={() => {
+                    commitRenamer(renamer)
+                    setRenamer(null)
+                  }}
+                  className="p-1.5 rounded-md hover:bg-accent/10 text-accent transition-colors"
+                  title="Apply Color"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </button>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1462,6 +1663,63 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
+        {/* Marquee Select Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => {
+              setMarqueeMenuOpen(m => !m)
+              setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+            }}
+            title={`Marquee Tool: ${marqueeMode.toUpperCase()}`}
+            className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== 'none'
+                ? 'border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]'
+                : 'border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
+            }`}
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+              <rect x="3" y="3" width="18" height="18" strokeDasharray="3 3"/>
+            </svg>
+          </button>
+          
+          <AnimatePresence>
+            {marqueeMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="absolute top-10 right-0 z-50 w-40 py-1 rounded-xl border border-border2 shadow-xl backdrop-blur-xl"
+                style={{ background: isDark ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)' }}
+              >
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted2 font-bold mb-1 border-b border-border/40">Select Tool</div>
+                {[
+                  { id: 'rect', label: 'Rectangular' },
+                  { id: 'freehand', label: 'Freehand' },
+                  { id: 'none', label: 'Off' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      setMarqueeMode(opt.id as MarqueeMode)
+                      setMarqueeMenuOpen(false)
+                      // Clear selection if turning off
+                      if (opt.id === 'none') {
+                        selectedNodeIdsRef.current.clear()
+                      }
+                    }}
+                    className={`w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide flex items-center justify-between hover:bg-accent/10 transition-colors ${marqueeMode === opt.id ? 'text-accent' : 'text-text'}`}
+                  >
+                    {opt.label}
+                    {marqueeMode === opt.id && (
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    )}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* Manual Graph Mode toggle */}
         <button
           onClick={() => {
@@ -1619,48 +1877,91 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               top: Math.min(contextMenu.y, window.innerHeight - 150)
             }}
           >
-            <button
-              onClick={() => {
-                setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: contextMenu.hitNodeId ?? undefined, hex: '#ffffff' })
-                setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
-              }}
-              className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
-            >
-              Add Node
-            </button>
-            
-            {contextMenu.hitNodeId && (
+            {selectedNodeIdsRef.current.size > 1 ? (
+              // MULTI-SELECTION BULK MENU
               <>
+                <div className="px-4 py-1.5 text-[10px] uppercase font-bold text-muted2 border-b border-border/40 mb-1">
+                  {selectedNodeIdsRef.current.size} Nodes Selected
+                </div>
                 <button
                   onClick={() => {
-                    const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
-                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
+                    setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: '__BULK_CONNECT__', hex: '#ffffff' })
                     setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
                   }}
                   className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
                 >
-                  Rename Node
+                  Add Linked Node
                 </button>
                 <button
                   onClick={() => {
-                    const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
-                    if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
+                    // Start in bulk color mode
+                    setRenamer({ id: null, label: 'Bulk Edit', cx: contextMenu.x, cy: contextMenu.y, hex: '#7c6af7', isBulkColor: true })
                     setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
                   }}
                   className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
                 >
-                  Change Colour
+                  Bulk Change Color
                 </button>
                 <div className="h-[1px] bg-border2 my-1 mx-2" />
                 <button
                   onClick={() => {
-                    engineRef.current?.removeNode(contextMenu.hitNodeId as string)
+                    const ids = Array.from(selectedNodeIdsRef.current)
+                    ids.forEach(id => engineRef.current?.removeNode(id))
+                    selectedNodeIdsRef.current.clear()
                     setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
                   }}
                   className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-red-500 hover:bg-red-500/10 transition-colors"
                 >
-                  Delete Node
+                  Delete Selected
                 </button>
+              </>
+            ) : (
+              // SINGLE / EMPTY SPACE MENU
+              <>
+                <button
+                  onClick={() => {
+                    setRenamer({ id: null, label: '', cx: contextMenu.x, cy: contextMenu.y, sourceNodeId: contextMenu.hitNodeId ?? undefined, hex: '#ffffff' })
+                    setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                  }}
+                  className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+                >
+                  Add Node
+                </button>
+                
+                {contextMenu.hitNodeId && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
+                        if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
+                        setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                      }}
+                      className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+                    >
+                      Rename Node
+                    </button>
+                    <button
+                      onClick={() => {
+                        const obj = nodeObjsRef.current.find(o => o.node.id === contextMenu.hitNodeId)
+                        if (obj) setRenamer({ id: contextMenu.hitNodeId as string, label: obj.node.label, cx: contextMenu.x, cy: contextMenu.y, hex: obj.node.hex })
+                        setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                      }}
+                      className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-text hover:bg-accent/10 hover:text-accent transition-colors"
+                    >
+                      Change Colour
+                    </button>
+                    <div className="h-[1px] bg-border2 my-1 mx-2" />
+                    <button
+                      onClick={() => {
+                        engineRef.current?.removeNode(contextMenu.hitNodeId as string)
+                        setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
+                      }}
+                      className="w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide text-red-500 hover:bg-red-500/10 transition-colors"
+                    >
+                      Delete Node
+                    </button>
+                  </>
+                )}
               </>
             )}
           </motion.div>
