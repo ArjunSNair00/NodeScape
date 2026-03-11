@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as THREE from 'three'
-import { GraphData, NodeObj, LinkObj, SimNode, SimLink, Spherical, GraphHandle } from '../types/graph'
+import { GraphData, NodeData, NodeObj, LinkObj, SimNode, SimLink, Spherical, GraphHandle } from '../types/graph'
 import {
   initSimNodes, buildLinksRaw, buildSceneObjects, clearSceneObjects,
   runPhysics, syncPositions, setHoveredNode, applyCam, buildLabelSprite, hexToInt,
@@ -142,6 +142,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const draftEdgeRef       = useRef<{ sourceNode: NodeObj, line: THREE.Line } | null>(null)
 
   const mouseRef    = useRef({ down: false, right: false, middle: false, shift: false, totalDist: 0, last: { x: 0, y: 0 }, start: { x: 0, y: 0 } })
+  
+  const clipboardRef = useRef<{ nodes: NodeData[], centroid: { x: number, y: number, z: number } }>({ nodes: [], centroid: { x: 0, y: 0, z: 0 } })
   const autoRotEnabledRef = useRef(sessionStorage.getItem('idleRotate') !== 'false')
   const autoRotRef  = useRef(autoRotEnabledRef.current)
   const edgeHoverEnabledRef = useRef(sessionStorage.getItem('edgeHover') === 'true')
@@ -604,13 +606,129 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     return () => ro.disconnect()
   }, [resize])
 
-  // ── keyboard: arrow keys + shift+arrow ───────────────────────────────────────
+  // ── keyboard: arrow keys + shift+arrow + copy/paste ───────────────────────
   useEffect(() => {
     const arrowKeys = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 
     const onKeyDown = (e: KeyboardEvent) => {
       // Don't steal input from text fields
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+      const isCmdOrCtrl = isMac ? e.metaKey : e.ctrlKey
+
+      if (isCmdOrCtrl) {
+        const key = e.key.toLowerCase()
+        if (key === 'c' || key === 'x') {
+          const selectedIds = Array.from(selectedNodeIdsRef.current)
+          if (selectedIds.length > 0) {
+            let sumX = 0, sumY = 0, sumZ = 0
+            const nodesToCopy: NodeData[] = []
+            
+            selectedIds.forEach(id => {
+              const sn = simNodesRef.current.find(n => n.id === id)
+              if (sn) {
+                // Keep only internal connections to other selected nodes
+                const internalConns = sn.connections.filter(cTarget => selectedNodeIdsRef.current.has(cTarget))
+                sumX += sn.x; sumY += sn.y; sumZ += sn.z
+                nodesToCopy.push({
+                  id: sn.id, label: sn.label, hex: sn.hex, category: sn.category,
+                  icon: sn.icon, content: sn.content, connections: internalConns,
+                  x: sn.x, y: sn.y, z: sn.z
+                })
+              }
+            })
+            
+            clipboardRef.current = {
+              nodes: nodesToCopy,
+              centroid: {
+                x: sumX / nodesToCopy.length,
+                y: sumY / nodesToCopy.length,
+                z: sumZ / nodesToCopy.length
+              }
+            }
+            
+            if (key === 'x' && engineRef.current) {
+               const engine = engineRef.current
+               selectedIds.forEach(id => engine.removeNode(id))
+               selectedNodeIdsRef.current.clear()
+               if (onNodeRename) onNodeRename('', '') // force generic save trigger
+            }
+          }
+          return
+        }
+
+        if (key === 'v') {
+          const clip = clipboardRef.current
+          if (clip.nodes.length > 0 && engineRef.current && canvasRef.current && cameraRef.current) {
+            const engine = engineRef.current
+            const rect = canvasRef.current.getBoundingClientRect()
+            const m = mouseRef.current.last
+            
+            mouse2Ref.current.x = ((m.x - rect.left) / rect.width) * 2 - 1
+            mouse2Ref.current.y = -((m.y - rect.top) / rect.height) * 2 + 1
+            raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current)
+            
+            const camDir = new THREE.Vector3()
+            cameraRef.current.getWorldDirection(camDir)
+            // Use dragPlaneRef normal or create a fresh one normal to camera passing through origin
+            const pastePlane = new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, new THREE.Vector3(0,0,0))
+            const pastePt = new THREE.Vector3()
+            raycasterRef.current.ray.intersectPlane(pastePlane, pastePt)
+
+            if (pastePt) {
+              const idMap = new Map<string, string>()
+              selectedNodeIdsRef.current.clear()
+
+              // Pass 1: add nodes
+              clip.nodes.forEach(n => {
+                const newId = `node_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`
+                idMap.set(n.id, newId)
+                
+                const dx = (n.x || 0) - clip.centroid.x
+                const dy = (n.y || 0) - clip.centroid.y
+                const dz = (n.z || 0) - clip.centroid.z
+
+                const labelStr = n.label.endsWith(' (Copy)') ? n.label : n.label + ' (Copy)'
+                
+                engine.addNode({
+                  id: newId,
+                  label: labelStr,
+                  hex: n.hex,
+                  category: n.category,
+                  icon: n.icon,
+                  content: n.content,
+                  connections: [] // handle individually next
+                })
+                
+                selectedNodeIdsRef.current.add(newId)
+                const simNode = simNodesRef.current.find(sn => sn.id === newId)
+                if (simNode) {
+                  simNode.x = pastePt.x + dx
+                  simNode.y = pastePt.y + dy
+                  simNode.z = pastePt.z + dz
+                  simNode.vx = simNode.vy = simNode.vz = 0
+                }
+              })
+
+              // Pass 2: restore internal edges using mapped IDs
+              clip.nodes.forEach(n => {
+                const newSourceId = idMap.get(n.id)
+                if (newSourceId && n.connections.length > 0) {
+                  n.connections.forEach(tId => {
+                    const newTargetId = idMap.get(tId)
+                    if (newTargetId) engine.addEdge(newSourceId, newTargetId)
+                  })
+                }
+              })
+              
+              if (onNodeRename) onNodeRename('', '') // force generic save trigger
+            }
+          }
+          return
+        }
+      }
+
       if (!arrowKeys.has(e.key) && e.key !== 'Shift') return
       e.preventDefault()
       heldKeysRef.current.add(e.key)
