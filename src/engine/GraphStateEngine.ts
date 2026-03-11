@@ -259,6 +259,41 @@ export class GraphStateEngine {
   }
 
   /**
+   * Appends nodes and edges from a GraphData payload to the existing graph.
+   */
+  appendNodes(data: GraphData) {
+    // 1. Add all nodes first
+    data.nodes.forEach(n => this.addNode(n))
+    // 2. Add edges
+    data.nodes.forEach(n => {
+      n.connections.forEach(targetId => this.addEdge(n.id, targetId))
+    })
+    this.resetPhysics()
+  }
+
+  /**
+   * Updates multiple nodes in bulk.
+   */
+  updateNodes(nodes: Partial<NodeData>[]) {
+    nodes.forEach(partialN => {
+      if (!partialN.id) return
+      const existing = this.simNodes.find(en => en.id === partialN.id)
+      if (existing) {
+        // Just merge fields and let updateNode handle specific side effects
+        const merged = { ...existing, ...partialN } as NodeData
+        this.updateNode(merged)
+      }
+    })
+  }
+
+  /**
+   * Removes multiple nodes sequentially.
+   */
+  removeNodes(ids: string[]) {
+    ids.forEach(id => this.removeNode(id))
+  }
+
+  /**
    * Incremental — updates a node's label and/or color in-place.
    * Rebuilds only this node's sprite texture and material color.
    * Does NOT restart physics or rebuild the scene.

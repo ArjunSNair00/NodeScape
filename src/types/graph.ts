@@ -90,4 +90,9 @@ export interface GraphHandle {
   resetGraph: (opts: { positions: boolean; colors: boolean }, original: GraphData) => void
   toggleNodeIcons: () => boolean
   toggleLockCamera: () => boolean
+
+  // Bulk Mutations
+  appendNodes: (data: GraphData) => void
+  updateNodes: (nodes: Partial<NodeData>[]) => void
+  removeNodes: (ids: string[]) => void
 }

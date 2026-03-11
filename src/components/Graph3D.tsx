@@ -1443,6 +1443,18 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       return lockCameraEnabledRef.current
     },
 
+    appendNodes(data) {
+      engineRef.current?.appendNodes(data)
+    },
+
+    updateNodes(nodes) {
+      engineRef.current?.updateNodes(nodes)
+    },
+
+    removeNodes(ids) {
+      engineRef.current?.removeNodes(ids)
+    },
+
     triggerSaveToast() {
       setShowSavedToast(true)
       setTimeout(() => setShowSavedToast(false), 2000)

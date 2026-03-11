@@ -111,7 +111,7 @@ export default function Sidebar({ open, graphData, originalGraphData, graphRef, 
 
           {/* Body */}
           <div className={`flex-1 overflow-x-hidden ${activeTab === 'ai' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-            {activeTab === 'ai'      && <AiChatTab onGraphChange={onGraphChange} />}
+            {activeTab === 'ai'      && <AiChatTab onGraphChange={onGraphChange} graphRef={graphRef} graphData={graphData} />}
             {activeTab === 'prompt'   && <PromptTab copied={copied} onCopy={handleCopyPrompt} />}
             {activeTab === 'paste'    && <PasteTab value={jsonInput} onChange={setJsonInput} error={error} onGenerate={handleGenerate} />}
             {activeTab === 'editor'   && <DataEditTab graphData={graphData} onGraphChange={onGraphChange} />}
@@ -136,6 +136,7 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
   const [edgeDrag, setEdgeDrag] = useState(() => sessionStorage.getItem('edgeDrag') === 'true')
   const [showNodeIcons, setShowNodeIcons] = useState(() => sessionStorage.getItem('showNodeIcons') !== 'false')
   const [lockCamera, setLockCamera] = useState(() => sessionStorage.getItem('lockCamera') !== 'false')
+  const [expandReplace, setExpandReplace] = useState(() => sessionStorage.getItem('expandReplace') === 'true')
 
   const [resetPositions, setResetPositions] = useState(true)
   const [resetColors, setResetColors] = useState(true)
@@ -149,7 +150,8 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
     sessionStorage.setItem('edgeDrag', edgeDrag.toString())
     sessionStorage.setItem('showNodeIcons', showNodeIcons.toString())
     sessionStorage.setItem('lockCamera', lockCamera.toString())
-  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag, showNodeIcons, lockCamera])
+    sessionStorage.setItem('expandReplace', expandReplace.toString())
+  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag, showNodeIcons, lockCamera, expandReplace])
 
   const g = () => graphRef.current
 
@@ -249,6 +251,15 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
             Reset to Original
           </ActionBtn>
         </div>
+      </BtnRow>
+
+      <BtnRow label="Expand Instead of Replace">
+        <ActionBtn onClick={() => setExpandReplace(!expandReplace)} wide active={expandReplace}>
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M6 1v10M1 6h10" strokeLinecap="round"/>
+          </svg>
+          {expandReplace ? 'EXPAND' : 'REPLACE'}
+        </ActionBtn>
       </BtnRow>
 
       <BtnRow label="Randomize positions">
@@ -570,6 +581,8 @@ Content rules:
 - every node has at least 2 connections
 - the graph should feel like Obsidian: a web of related ideas`
 
+type AIMode = 'generate' | 'append' | 'update' | 'remove'
+
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -650,12 +663,15 @@ function tryRepairAndParse(raw: string): { data: import('../types/graph').GraphD
   return { data: null }
 }
 
-function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/graph').GraphData) => void }) {
+function AiChatTab({ onGraphChange, graphRef, graphData }: { onGraphChange: (data: GraphData) => void, graphRef: React.RefObject<GraphHandle | null>, graphData: GraphData }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: 'Type a topic and I\'ll generate a knowledge graph for you! You can also specify preferences like number of nodes.' }
   ])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [aiMode, setAiMode] = useState<AIMode>('generate')
+  const [showModeDropdown, setShowModeDropdown] = useState(false)
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const lastUpdateRef = useRef<number>(0)
@@ -685,6 +701,18 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
     const controller = new AbortController()
     abortRef.current = controller
 
+    const isExpand = sessionStorage.getItem('expandReplace') === 'true'
+    const actualMode = (aiMode === 'generate' && isExpand) ? 'append' : aiMode
+
+    let contextualPrompt = SYSTEM_PROMPT
+    if (actualMode === 'append') {
+      contextualPrompt += `\n\nAPPEND MODE: The user has an existing graph with nodes: ${graphData.nodes.map(n => n.id).join(', ')}. Generate NEW nodes to append to this graph. You may connect new nodes to the existing node IDs.`
+    } else if (actualMode === 'update') {
+      contextualPrompt += `\n\nUPDATE MODE: The user has existing nodes: ${JSON.stringify(graphData.nodes.map(n => ({ id: n.id, label: n.label, category: n.category })))}\nProvide the exact JSON schema containing ONLY the nodes you want to modify, passing their exact 'id' to overwrite their contents, connections, and colors.`
+    } else if (actualMode === 'remove') {
+      contextualPrompt += `\n\nREMOVE MODE: The user has existing nodes: ${JSON.stringify(graphData.nodes.map(n => ({ id: n.id, label: n.label })))}\nProvide the exact JSON schema containing ONLY the nodes you want to DELETE. (The application will read these IDs and permanently remove them).`
+    }
+
     let fullBuffer = ''
 
     try {
@@ -697,7 +725,7 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
         body: JSON.stringify({
           model: GROQ_MODEL,
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: contextualPrompt },
             { role: 'user', content: userText },
           ],
           response_format: { type: 'json_object' },
@@ -746,7 +774,18 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
                 const { data } = tryRepairAndParse(fullBuffer)
                 if (data && data.nodes.length > lastNodeCountRef.current) {
                   lastNodeCountRef.current = data.nodes.length
-                  onGraphChange(data)
+                  
+                  if (actualMode === 'generate') {
+                    onGraphChange(data)
+                  } else if (actualMode === 'append') {
+                    graphRef.current?.appendNodes(data)
+                    graphRef.current?.updateNodes(data.nodes) // To capture streamed content merges
+                  } else if (actualMode === 'update') {
+                    graphRef.current?.updateNodes(data.nodes)
+                  } else if (actualMode === 'remove') {
+                    graphRef.current?.removeNodes(data.nodes.map(n => n.id))
+                  }
+                  
                   setMessages(prev => {
                     const copy = [...prev]
                     const last = copy[copy.length - 1]
@@ -770,11 +809,25 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
       const finalResult = tryRepairAndParse(fullBuffer)
       const data = finalResult.data
       const error = finalResult.error || null
+
+      const handleFinalMutations = (parsedData: GraphData) => {
+        if (actualMode === 'generate') {
+          onGraphChange(parsedData)
+        } else if (actualMode === 'append') {
+          graphRef.current?.appendNodes(parsedData)
+          graphRef.current?.updateNodes(parsedData.nodes)
+        } else if (actualMode === 'update') {
+          graphRef.current?.updateNodes(parsedData.nodes)
+        } else if (actualMode === 'remove') {
+          graphRef.current?.removeNodes(parsedData.nodes.map(n => n.id))
+        }
+      }
+
       // Fallback: try the stricter parseGraphJSON if repair didn't work
       if (!data) {
         const strict = parseGraphJSON(fullBuffer)
         if (strict.data) { 
-          onGraphChange(strict.data)
+          handleFinalMutations(strict.data)
           setMessages(prev => {
             const copy = [...prev]
             copy[copy.length - 1] = {
@@ -788,7 +841,7 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
         }
       }
       if (data) {
-        onGraphChange(data)
+        handleFinalMutations(data)
         setMessages(prev => {
           const copy = [...prev]
           copy[copy.length - 1] = {
@@ -884,15 +937,47 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
       )}
 
       {/* Input area */}
-      <form className="flex items-center gap-2 px-4 py-3 border-t border-border flex-shrink-0" onSubmit={sendMessage}>
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="Type a topic…"
-          disabled={isStreaming}
-          className="flex-1 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
-        />
+      <div className="relative border-t border-border flex-shrink-0">
+        <AnimatePresence>
+          {showModeDropdown && (
+             <motion.div
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: 10 }}
+               className="absolute bottom-[calc(100%+0.5rem)] right-4 flex flex-col bg-surface border border-border2 rounded-lg shadow-xl overflow-hidden z-10 w-32"
+             >
+               {(['generate', 'append', 'update', 'remove'] as AIMode[]).map(m => (
+                 <button
+                   key={m}
+                   type="button"
+                   onClick={() => { setAiMode(m); setShowModeDropdown(false) }}
+                   className={`px-4 py-2 text-[10px] tracking-widest uppercase text-left hover:bg-surface2 transition-colors ${m === aiMode ? 'text-accent font-medium bg-accent/5' : 'text-muted'}`}
+                 >
+                   {m}
+                 </button>
+               ))}
+             </motion.div>
+          )}
+        </AnimatePresence>
+
+        <form className="flex items-center gap-2 px-4 py-3 min-w-0" onSubmit={sendMessage}>
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={`Type a topic to ${aiMode}…`}
+            disabled={isStreaming}
+            className="flex-1 min-w-0 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
+          />
+          
+          <button
+            type="button"
+            onClick={() => setShowModeDropdown(!showModeDropdown)}
+            className={`flex items-center justify-center flex-shrink-0 h-8 px-2 rounded-lg border transition-all duration-200 ${showModeDropdown ? 'bg-surface2 border-accent text-accent' : 'bg-surface2 border-border2 text-muted hover:border-accent hover:text-accent'}`}
+            title="Set Response Mode"
+          >
+            <span className="text-[9px] uppercase tracking-widest font-medium w-14 text-center">{aiMode}</span>
+          </button>
         {isStreaming ? (
           <button
             type="button"
@@ -918,6 +1003,7 @@ function AiChatTab({ onGraphChange }: { onGraphChange: (data: import('../types/g
           </button>
         )}
       </form>
+      </div>
     </div>
   )
 }
