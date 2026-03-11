@@ -192,7 +192,20 @@ export function syncPositions(nodeObjs: NodeObj[], linkObjs: LinkObj[], spherica
   linkObjs.forEach(lo => {
     const pos = lo.line.geometry.attributes.position as THREE.BufferAttribute
     pos.setXYZ(0, lo.source.x, lo.source.y, lo.source.z)
-    pos.setXYZ(1, lo.target.x, lo.target.y, lo.target.z)
+    
+    // Grow edge from source to target if animating
+    if (lo.animProgress !== undefined && lo.animProgress < 1) {
+      const p = lo.animProgress
+      const tx = lo.source.x + (lo.target.x - lo.source.x) * p
+      const ty = lo.source.y + (lo.target.y - lo.source.y) * p
+      const tz = lo.source.z + (lo.target.z - lo.source.z) * p
+      pos.setXYZ(1, tx, ty, tz)
+      // also lerp opacity
+      lo.mat.opacity = 0.75 * p
+    } else {
+      pos.setXYZ(1, lo.target.x, lo.target.y, lo.target.z)
+    }
+    
     pos.needsUpdate = true
   })
 }

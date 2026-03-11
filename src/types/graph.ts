@@ -58,6 +58,7 @@ export interface NodeObj {
   glowMat: THREE.MeshBasicMaterial
   sprMat: THREE.SpriteMaterial
   node: SimNode
+  animScale?: number
 }
 
 export interface LinkObj {
@@ -65,6 +66,7 @@ export interface LinkObj {
   mat: THREE.LineBasicMaterial
   source: SimNode
   target: SimNode
+  animProgress?: number
 }
 
 export interface Spherical {

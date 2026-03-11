@@ -83,12 +83,13 @@ export class GraphStateEngine {
     ]
     const geo = new THREE.BufferGeometry().setFromPoints(pts)
     const color = new THREE.Color(source.hex).lerp(new THREE.Color(target.hex), 0.5)
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75 })
+    const animate = sessionStorage.getItem('graphGrowthAnimation') !== 'false'
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: animate ? 0 : 0.75 })
     const line = new THREE.Line(geo, mat)
     this.scene.add(line)
     return {
       simLink: { source, target },
-      linkObj: { line, mat, source, target },
+      linkObj: { line, mat, source, target, animProgress: animate ? 0 : 1 },
     }
   }
 
@@ -221,7 +222,13 @@ export class GraphStateEngine {
     simNode._sprite = sprite
     simNode._sprMat = sprMat
 
-    const nodeObj: NodeObj = { mesh, mat, glowMat, sprMat, node: simNode }
+    const animate = sessionStorage.getItem('graphGrowthAnimation') !== 'false'
+    if (animate) {
+      mesh.scale.setScalar(0)
+      if (sprite) sprite.scale.setScalar(0)
+    }
+
+    const nodeObj: NodeObj = { mesh, mat, glowMat, sprMat, node: simNode, animScale: animate ? 0 : 1 }
 
     this.simNodes.push(simNode)
     this.nodeObjs.push(nodeObj)

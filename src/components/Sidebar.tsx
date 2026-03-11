@@ -1,8 +1,8 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GraphData, GraphHandle } from '../types/graph'
 import { AI_PROMPT, EXAMPLE_TOPICS } from '../data/defaultGraph'
-import { parseGraphJSON } from '../lib/validateGraph'
+import { parseGraphJSON, tryRepairAndParse } from '../lib/validateGraph'
 
 interface Props {
   open: boolean
@@ -137,6 +137,8 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
   const [showNodeIcons, setShowNodeIcons] = useState(() => sessionStorage.getItem('showNodeIcons') !== 'false')
   const [lockCamera, setLockCamera] = useState(() => sessionStorage.getItem('lockCamera') !== 'false')
   const [expandReplace, setExpandReplace] = useState(() => sessionStorage.getItem('expandReplace') === 'true')
+  const [autoSave, setAutoSave] = useState(() => sessionStorage.getItem('autoSave') !== 'false')
+  const [graphGrowthAnimation, setGraphGrowthAnimation] = useState(() => sessionStorage.getItem('graphGrowthAnimation') !== 'false')
 
   const [resetPositions, setResetPositions] = useState(true)
   const [resetColors, setResetColors] = useState(true)
@@ -151,7 +153,9 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
     sessionStorage.setItem('showNodeIcons', showNodeIcons.toString())
     sessionStorage.setItem('lockCamera', lockCamera.toString())
     sessionStorage.setItem('expandReplace', expandReplace.toString())
-  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag, showNodeIcons, lockCamera, expandReplace])
+    sessionStorage.setItem('autoSave', autoSave.toString())
+    sessionStorage.setItem('graphGrowthAnimation', graphGrowthAnimation.toString())
+  }, [labelLevel, drawLevel, idleRotate, edgeHover, continuousPhysics, edgeDrag, showNodeIcons, lockCamera, expandReplace, autoSave, graphGrowthAnimation])
 
   const g = () => graphRef.current
 
@@ -251,6 +255,25 @@ function ControlsTab({ graphRef, originalGraphData }: { graphRef: React.RefObjec
             Reset to Original
           </ActionBtn>
         </div>
+      </BtnRow>
+
+      <BtnRow label="Original Data Save">
+        <ActionBtn onClick={() => setAutoSave(!autoSave)} wide active={autoSave}>
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 2h6l2 2v6a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M4 2v3h4V2M4 7h4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {autoSave ? 'AUTO' : 'MANUAL'}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Graph Growth Animation">
+        <ActionBtn onClick={() => setGraphGrowthAnimation(!graphGrowthAnimation)} wide active={graphGrowthAnimation}>
+          <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M6 2v8M2 6h8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {graphGrowthAnimation ? 'ON' : 'OFF'}
+        </ActionBtn>
       </BtnRow>
 
       <BtnRow label="Expand Instead of Replace">
@@ -587,80 +610,6 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   nodeCount?: number
-}
-
-function tryRepairAndParse(raw: string): { data: import('../types/graph').GraphData | null; error?: string } {
-  // Strip markdown fences if partially present
-  let cleaned = raw
-    .replace(/^```json\s*/m, '')
-    .replace(/^```\s*/m, '')
-    .replace(/\s*```$/m, '')
-    .trim()
-
-  // Sanitize literal newlines inside JSON strings (very common LLM issue)
-  // Replace \n and \r inside strings with <br> or space
-  cleaned = cleaned.replace(/(["]):([\s\S]*?)(?="[,}\]])/g, (match) => {
-    return match.replace(/\n/g, '<br>').replace(/\r/g, '')
-  })
-
-  // Try direct parse first
-  try {
-    const obj = JSON.parse(cleaned)
-    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
-      const { data } = parseGraphJSON(JSON.stringify(obj))
-      return { data }
-    }
-  } catch { /* continue to repair */ }
-
-  // Try repairing by closing open brackets/braces
-  try {
-    let repaired = cleaned
-
-    // Remove any trailing incomplete key-value or comma patterns
-    repaired = repaired.replace(/,\s*$/, '')
-    repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, '')
-    repaired = repaired.replace(/:\s*$/, ': ""')
-    repaired = repaired.replace(/,\s*$/, '')
-
-    // Close any open string — count unescaped quotes
-    let inString = false
-    let escaped = false
-    for (const ch of repaired) {
-      if (escaped) { escaped = false; continue }
-      if (ch === '\\') { escaped = true; continue }
-      if (ch === '"') inString = !inString
-    }
-    if (inString) repaired += '"'
-
-    // Remove trailing comma again
-    repaired = repaired.replace(/,\s*$/, '')
-
-    // Count unmatched delimiters
-    const opens = { '{': 0, '[': 0 }
-    const closes: Record<string, '{' | '['> = { '}': '{', ']': '[' }
-    inString = false
-    escaped = false
-    for (const ch of repaired) {
-      if (escaped) { escaped = false; continue }
-      if (ch === '\\') { escaped = true; continue }
-      if (ch === '"') { inString = !inString; continue }
-      if (inString) continue
-      if (ch === '{' || ch === '[') opens[ch]++
-      if (ch === '}' || ch === ']') opens[closes[ch]]--
-    }
-
-    // Append closing delimiters in reverse order (arrays before objects)
-    for (let i = 0; i < opens['[']; i++) repaired += ']'
-    for (let i = 0; i < opens['{']; i++) repaired += '}'
-
-    const obj = JSON.parse(repaired)
-    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
-      const { data } = parseGraphJSON(JSON.stringify(obj))
-      return { data }
-    }
-  } catch (e) { return { data: null, error: (e as Error).message } }
-
-  return { data: null }
 }
 
 function AiChatTab({ onGraphChange, graphRef, graphData }: { onGraphChange: (data: GraphData) => void, graphRef: React.RefObject<GraphHandle | null>, graphData: GraphData }) {

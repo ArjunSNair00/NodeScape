@@ -20,6 +20,7 @@ export default function App() {
   const [originalGraphData, setOriginalGraphData] = useState<GraphData>(DEFAULT_GRAPH)
   const [currentId, setCurrentId]     = useState<string | undefined>(undefined)
   const [activePage, setActivePage]   = useState<NodeData | null>(null)
+  const [pageHistory, setPageHistory] = useState<NodeData[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isEditMode, setIsEditMode]   = useState(false)
 
@@ -31,6 +32,7 @@ export default function App() {
     setOriginalGraphData(record.data)
     setCurrentId(record.id === '__demo__' ? undefined : record.id)
     setActivePage(null)
+    setPageHistory([])
     setSidebarOpen(false)
     setView('graph')
   }
@@ -42,6 +44,7 @@ export default function App() {
     setOriginalGraphData(newData)
     setCurrentId(undefined)
     setActivePage(null)
+    setPageHistory([])
     setSidebarOpen(true)
     setView('graph')
   }
@@ -61,8 +64,10 @@ export default function App() {
     setGraphData(data)
     setOriginalGraphData(data)
     // auto-save whenever graph data is replaced via paste
-    const id = saveGraph(data, currentId)
-    setCurrentId(id)
+    if (sessionStorage.getItem('autoSave') !== 'false') {
+      const id = saveGraph(data, currentId)
+      setCurrentId(id)
+    }
   }
 
   // Handle direct node updates from PageView or Double-Click inline editing
@@ -75,21 +80,43 @@ export default function App() {
     const newData = { ...currentData, nodes: newNodes }
     setGraphData(newData)
     // Optional: save on every keystroke/blur might be heavy, but autosaving keeps it fresh:
-    const id = saveGraph(newData, currentId)
-    setCurrentId(id)
+    if (sessionStorage.getItem('autoSave') !== 'false') {
+      const id = saveGraph(newData, currentId)
+      setCurrentId(id)
+    }
     setActivePage(updatedNode)
+    
+    // Also update history if the active node is in there
+    setPageHistory(prev => prev.map(p => p.id === updatedNode.id ? updatedNode : p))
+  }
+
+  const handleNavigatePage = (node: NodeData) => {
+    if (activePage) setPageHistory(prev => [...prev, activePage])
+    setActivePage(node)
+  }
+
+  const handleBackPage = () => {
+    setPageHistory(prev => {
+      const newHistory = [...prev]
+      const last = newHistory.pop()
+      if (last) setActivePage(last)
+      return newHistory
+    })
   }
 
   const goHome = () => {
     // Auto-save the current graph (with live drag positions) before leaving the view.
     // This ensures that even without an explicit Save click, positions are preserved.
-    if (graphRef.current) {
-      const fresh = graphRef.current.getFreshData()
-      if (fresh.nodes.length > 0) {
-        saveGraph(fresh, currentId)
+    if (sessionStorage.getItem('autoSave') !== 'false') {
+      if (graphRef.current) {
+        const fresh = graphRef.current.getFreshData()
+        if (fresh.nodes.length > 0) {
+          saveGraph(fresh, currentId)
+        }
       }
     }
     setActivePage(null)
+    setPageHistory([])
     setSidebarOpen(false)
     setView('home')
   }
@@ -118,7 +145,10 @@ export default function App() {
                 sidebarOpen={sidebarOpen}
                 isEditMode={isEditMode}
                 theme={theme}
-                onOpenPage={setActivePage}
+                onOpenPage={(node) => {
+                  setPageHistory([]) // clear history when opening directly from 3D space
+                  setActivePage(node)
+                }}
                 onToggleSidebar={() => setSidebarOpen(o => !o)}
                 onToggleTheme={toggleTheme}
                 onToggleEditMode={() => setIsEditMode(o => !o)}
@@ -135,8 +165,10 @@ export default function App() {
                   const newNodes = currentData.nodes.map(n => n.id === id ? { ...n, label } : n)
                   const newData = { ...currentData, nodes: newNodes }
                   setGraphData(newData)
-                  const newId = saveGraph(newData, currentId)
-                  setCurrentId(newId)
+                  if (sessionStorage.getItem('autoSave') !== 'false') {
+                    const newId = saveGraph(newData, currentId)
+                    setCurrentId(newId)
+                  }
                   
                   // Also manually call engine's updateNode since Graph3D's load() might take a frame
                   if (graphRef.current) {
@@ -164,8 +196,10 @@ export default function App() {
                   <PageView
                     node={activePage}
                     nodeMap={Object.fromEntries(graphData.nodes.map(n => [n.id, n]))}
-                    onClose={() => setActivePage(null)}
-                    onNavigate={setActivePage}
+                    onClose={() => { setActivePage(null); setPageHistory([]); }}
+                    onNavigate={handleNavigatePage}
+                    onBack={handleBackPage}
+                    canGoBack={pageHistory.length > 0}
                     isEditMode={isEditMode}
                     onUpdateNode={handleNodeUpdate}
                   />

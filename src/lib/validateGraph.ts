@@ -50,3 +50,71 @@ export function parseGraphJSON(raw: string): { data: GraphData | null; error: st
     error: null,
   }
 }
+
+export function tryRepairAndParse(raw: string): { data: GraphData | null; error?: string } {
+  // Strip markdown fences if partially present
+  let cleaned = raw
+    .replace(/^```json\s*/m, '')
+    .replace(/^```\s*/m, '')
+    .replace(/\s*```$/m, '')
+    .trim()
+
+  // Sanitize literal newlines inside JSON strings
+  cleaned = cleaned.replace(/(["]):([\s\S]*?)(?="[,}\]])/g, (match) => {
+    return match.replace(/\n/g, '<br>').replace(/\r/g, '')
+  })
+
+  // Try direct parse first
+  try {
+    const obj = JSON.parse(cleaned)
+    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
+      const { data } = parseGraphJSON(JSON.stringify(obj))
+      return { data }
+    }
+  } catch { /* continue to repair */ }
+
+  // Try repairing by closing open brackets/braces
+  try {
+    let repaired = cleaned
+
+    repaired = repaired.replace(/,\s*$/, '')
+    repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, '')
+    repaired = repaired.replace(/:\s*$/, ': ""')
+    repaired = repaired.replace(/,\s*$/, '')
+
+    let inString = false
+    let escaped = false
+    for (const ch of repaired) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === '"') inString = !inString
+    }
+    if (inString) repaired += '"'
+
+    repaired = repaired.replace(/,\s*$/, '')
+
+    const opens = { '{': 0, '[': 0 }
+    const closes: Record<string, '{' | '['> = { '}': '{', ']': '[' }
+    inString = false
+    escaped = false
+    for (const ch of repaired) {
+      if (escaped) { escaped = false; continue }
+      if (ch === '\\') { escaped = true; continue }
+      if (ch === '"') { inString = !inString; continue }
+      if (inString) continue
+      if (ch === '{' || ch === '[') opens[ch as '{' | '[']++
+      if (ch === '}' || ch === ']') opens[closes[ch as '}' | ']']]--
+    }
+
+    for (let i = 0; i < opens['[']; i++) repaired += ']'
+    for (let i = 0; i < opens['{']; i++) repaired += '}'
+
+    const obj = JSON.parse(repaired)
+    if (obj && Array.isArray(obj.nodes) && obj.nodes.length > 0) {
+      const { data } = parseGraphJSON(JSON.stringify(obj))
+      return { data }
+    }
+  } catch (e) { return { data: null, error: (e as Error).message } }
+
+  return { data: null }
+}

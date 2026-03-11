@@ -8,6 +8,7 @@ import {
 } from '../lib/graphBuilder'
 import { Theme, themeBgInt, themeFogColor } from '../hooks/useTheme'
 import { GraphStateEngine } from '../engine/GraphStateEngine'
+import { tryRepairAndParse } from '../lib/validateGraph'
 
 interface Props {
   graphData: GraphData
@@ -138,6 +139,109 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const previewNodeIdRef   = useRef<string | null>(null)  // which node is currently shown in the preview
   const mouseOverPreviewRef = useRef(false)                // true while cursor is inside the preview div
   const hidePreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastHoveredNodeRef = useRef<NodeObj | null>(null)
+
+  const [isDeepDiving, setIsDeepDiving] = useState(false)
+  const abortDeepDiveRef = useRef<AbortController | null>(null)
+
+  const handleDeepDive = async () => {
+    if (selectedNodeIdsRef.current.size !== 1) {
+      alert("Please select exactly one node to Deep Dive.")
+      return
+    }
+    const targetId = Array.from(selectedNodeIdsRef.current)[0]
+    const targetNode = simNodesRef.current.find(n => n.id === targetId)
+    if (!targetNode) return
+
+    setIsDeepDiving(true)
+    const controller = new AbortController()
+    abortDeepDiveRef.current = controller
+
+    const systemPrompt = `You are a specialized knowledge-graph generator. The user is exploring the topic "${targetNode.label}". Provide 3-5 subtopics or deeper, more advanced concepts that expand directly on this specific topic.
+    
+    You MUST reply with a single JSON object.
+    Schema:
+    {"nodes":[{"id":"unique_snake_case_name","label":"Display Name","category":"concept","hex":"#hexcolor","content":"HTML string with <strong> for key terms","connections":["${targetNode.id}"]}]}
+    
+    Rule: All new nodes MUST include "${targetNode.id}" in their connections list, plus any inter-connections between the new nodes.`
+
+    let fullBuffer = ''
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Expand on ${targetNode.label}.` },
+          ],
+          response_format: { type: 'json_object' },
+          stream: true,
+        }),
+        signal: controller.signal,
+      })
+
+      if (!response.ok) throw new Error('API error')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let done = false
+      let lineBuffer = ''
+      const seenNodes = new Set<string>()
+
+      while (!done && reader) {
+        const { value, done: streamDone } = await reader.read()
+        done = streamDone
+        if (!value) continue
+
+        lineBuffer += decoder.decode(value, { stream: true })
+        const lines = lineBuffer.split('\n')
+        lineBuffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim().startsWith('data:')) continue
+          const jsonStr = line.replace(/^data:\s*/, '').trim()
+          if (jsonStr === '[DONE]') { done = true; break }
+
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const delta = parsed.choices?.[0]?.delta?.content
+            if (delta) {
+              fullBuffer += delta
+              
+              const { data } = tryRepairAndParse(fullBuffer)
+              if (data && data.nodes) {
+                data.nodes.forEach(n => {
+                  if (n.id && n.label && n.hex && n.connections && !seenNodes.has(n.id)) {
+                    seenNodes.add(n.id)
+                    n.position = { 
+                       x: targetNode.x + (Math.random()-0.5)*100, 
+                       y: targetNode.y + (Math.random()-0.5)*100, 
+                       z: targetNode.z + (Math.random()-0.5)*100 
+                    }
+                    if (!n.connections.includes(targetNode.id)) {
+                      n.connections.push(targetNode.id)
+                    }
+                    engineRef.current?.addNode(n)
+                    n.connections.forEach(c => engineRef.current?.addEdge(n.id, c))
+                  }
+                })
+              }
+            }
+          } catch { } // ignore broken stream chunks
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsDeepDiving(false)
+      abortDeepDiveRef.current = null
+    }
+  }
   
   const draftEdgeRef       = useRef<{ sourceNode: NodeObj, line: THREE.Line } | null>(null)
 
@@ -160,8 +264,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
   const labelMultRef   = useRef(0.3 + ((Number(sessionStorage.getItem('labelLevel') || 5) - 1) / 8) * 1.9)        // user-adjustable label scale multiplier
   const jigglingRef    = useRef(false)    // true while jiggle animation running
 
-  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string, hex: string, isBulkColor?: boolean } | null>(null)
-  const clickRef = useRef<{ time: number, id: string | null }>({ time: 0, id: null })
+  const [renamer, setRenamer] = useState<{ id: string | null, label: string, cx: number, cy: number, sourceNodeId?: string, hex: string, isBulkColor?: boolean, spawnX?: number, spawnY?: number, spawnZ?: number } | null>(null)
+  const clickRef = useRef<{ time: number, id: string | 'empty' | null }>({ time: 0, id: null })
   
   // Custom ref to store latest renamer state for the click-away listener
   const latestRenamerRef = useRef(renamer)
@@ -194,6 +298,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           isCommittingRef.current = false
           return
         }
+        
+        // Pass specific coordinates if provided (e.g., from double clicking empty space)
+        const spawnPos = finalRenamer.spawnX !== undefined ? { x: finalRenamer.spawnX, y: finalRenamer.spawnY, z: finalRenamer.spawnZ } : undefined
+
         engineRef.current?.addNode({
           id: val,
           label: val,
@@ -201,7 +309,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           category: 'concept',
           icon: '📄',
           content: 'nothing',
-          connections: finalRenamer.sourceNodeId ? [finalRenamer.sourceNodeId] : []
+          connections: finalRenamer.sourceNodeId ? [finalRenamer.sourceNodeId] : [],
+          position: spawnPos as any
         })
         if (finalRenamer.sourceNodeId) {
           // If the sourceNodeId is the special bulk connect flag, connect to all selected
@@ -265,8 +374,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
     lastPinchDist: 0,
     lastMidpoint: { x: 0, y: 0 },
   })
-  
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
+  const [isLeftSidebarPinned, setIsLeftSidebarPinned] = useState(() => sessionStorage.getItem('leftSidebarPinned') === 'true')
   const [showSavedToast, setShowSavedToast] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [hoverPreviewOn, setHoverPreviewOn] = useState(() => sessionStorage.getItem('hoverPreview') === 'true')
@@ -542,9 +651,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       engineRef.current?.tick(draggedNodeRef.current?.id)
       syncPositions(nodeObjsRef.current, linkObjsRef.current, sphRef.current, labelMultRef.current)
 
+      // Link Growth Animation 
+      linkObjsRef.current.forEach(lo => {
+        if (lo.animProgress !== undefined && lo.animProgress < 1) {
+          lo.animProgress += 0.04
+          if (lo.animProgress > 1) lo.animProgress = 1
+        }
+      })
+
       nodeObjsRef.current.forEach((o, i) => {
+        // Node Scale Animation
+        if (o.animScale !== undefined && o.animScale < 1) {
+          o.animScale += (1 - o.animScale) * 0.15 + 0.02
+          if (o.animScale > 1) o.animScale = 1
+          o.mesh.scale.setScalar(o.animScale)
+          if (o.node._sprite) {
+             const baseScale = sphRef.current.radius * 0.13 * labelMultRef.current
+             o.node._sprite.scale.set(baseScale * 1.4 * o.animScale, baseScale * 0.35 * o.animScale, 1)
+          }
+        }
+
         const hoverIsNode = hovObjRef.current && 'node' in hovObjRef.current
         const hoverIsLink = hovObjRef.current && 'source' in hovObjRef.current
+        
+        if (hoverIsNode) lastHoveredNodeRef.current = hovObjRef.current as NodeObj
         
         const isHoveredNode = hoverIsNode && o.node.id === (hovObjRef.current as NodeObj).node.id
         const isSelected = selectedNodeIdsRef.current.has(o.node.id)
@@ -1083,11 +1213,50 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             // Close context menu regardless
             setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null })
             
-            // If left-click on empty space while manual mode is on and not trying to drag, add a node?
-            // Actually, wait, let's let standard selection clearing happen first
             const hit = getHit(e.clientX, e.clientY)
+            const now = Date.now()
+            
             if (hit && 'node' in hit) {
               setRenamer({ id: null, label: '', cx: e.clientX, cy: e.clientY, sourceNodeId: hit.node.id, hex: '#ffffff' })
+              clickRef.current = { time: 0, id: null } // reset
+            } else {
+              // Clicked on empty space. Track double clicks.
+              if (clickRef.current.id === 'empty' && now - clickRef.current.time < 350) {
+                 // Trigger creation dialog
+                 const rect = canvas.getBoundingClientRect()
+                 mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+                 mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+                 raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current!)
+                 
+                 // Generate a spawn point roughly passing through the screen coordinate
+                 const camDir = new THREE.Vector3()
+                 cameraRef.current!.getWorldDirection(camDir)
+                 
+                 // Determine coplanar target point - either the last hovered node or origin
+                 let targetZPoint = new THREE.Vector3(0,0,0)
+                 if (lastHoveredNodeRef.current) {
+                    targetZPoint.set(lastHoveredNodeRef.current.node.x, lastHoveredNodeRef.current.node.y, lastHoveredNodeRef.current.node.z)
+                 }
+
+                 dragPlaneRef.current.setFromNormalAndCoplanarPoint(camDir, targetZPoint)
+                 const spawnPt = new THREE.Vector3()
+                 raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, spawnPt)
+                 
+                 setRenamer({ 
+                   id: null, 
+                   label: '', 
+                   cx: e.clientX, 
+                   cy: e.clientY, 
+                   sourceNodeId: lastHoveredNodeRef.current?.node.id, 
+                   hex: '#ffffff',
+                   spawnX: spawnPt?.x,
+                   spawnY: spawnPt?.y,
+                   spawnZ: spawnPt?.z
+                 })
+                 clickRef.current = { time: 0, id: null }
+              } else {
+                 clickRef.current = { time: now, id: 'empty' }
+              }
             }
           } else {
             // Standard double-click rename & click-to-open logic
@@ -1517,19 +1686,34 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       {/* Node Index Left Sidebar */}
       <div 
         className={`absolute top-0 bottom-0 left-0 bg-surface/95 backdrop-blur-md border-r border-border transition-transform duration-300 z-50 flex flex-col w-64 shadow-2xl ${
-          leftSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          (leftSidebarOpen || isLeftSidebarPinned) ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
           <span className="text-xs font-medium tracking-widest text-text">Index</span>
-          <button 
-            onClick={() => setLeftSidebarOpen(false)}
-            className="text-muted hover:text-accent p-1 transition-colors"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => {
+                const next = !isLeftSidebarPinned
+                setIsLeftSidebarPinned(next)
+                sessionStorage.setItem('leftSidebarPinned', next.toString())
+              }}
+              className={`p-1.5 transition-all rounded-md border ${isLeftSidebarPinned ? 'text-accent border-accent bg-accent/10' : 'text-muted border-transparent hover:text-text hover:bg-surface2'}`}
+              title={isLeftSidebarPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 11V7a4 4 0 00-8 0v4l-2 3v2h6v6l2 2 2-2v-6h6v-2l-2-3z" />
+              </svg>
+            </button>
+            <button 
+              onClick={() => setLeftSidebarOpen(false)}
+              className="text-muted hover:text-accent p-1 transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {graphData.nodes.map(n => (
@@ -1551,7 +1735,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       {/* Button to open Left Sidebar */}
       <button
         onClick={() => setLeftSidebarOpen(true)}
-        className={`absolute top-4 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-300 ${leftSidebarOpen ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'}`}
+        className={`absolute top-4 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-300 ${(leftSidebarOpen || isLeftSidebarPinned) ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'}`}
         title="Open Node Index"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1564,7 +1748,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       {/* Clear Graph button */}
       <button
         onClick={() => setShowClearConfirm(true)}
-        className={`absolute top-14 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-[#f87171] hover:text-[#f87171] hover:bg-[#f87171]/10 transition-all duration-300 ${leftSidebarOpen ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'}`}
+        className={`absolute top-14 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-[#f87171] hover:text-[#f87171] hover:bg-[#f87171]/10 transition-all duration-300 ${(leftSidebarOpen || isLeftSidebarPinned) ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'}`}
         title="Clear Graph"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1945,6 +2129,21 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 20h9"></path>
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+        </button>
+        <button
+          onClick={handleDeepDive}
+          title={isDeepDiving ? 'Deep Diving...' : 'Deep Dive (Select 1 Node)'}
+          className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            isDeepDiving
+              ? 'border-[#6a58e8] text-[#6a58e8] bg-[#6a58e8]/20 shadow-[0_0_10px_rgba(106,88,232,0.3)] animate-pulse'
+              : 'border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10'
+          }`}
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="8 17 12 21 16 17"/>
+            <line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/>
           </svg>
         </button>
         <button onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}

@@ -6,8 +6,10 @@ interface Props {
   node: NodeData;
   nodeMap: Record<string, NodeData>;
   isEditMode: boolean;
+  canGoBack?: boolean;
   onClose: () => void;
   onNavigate: (node: NodeData) => void;
+  onBack?: () => void;
   onUpdateNode: (updatedNode: NodeData) => void;
 }
 
@@ -87,8 +89,10 @@ export default function PageView({
   node,
   nodeMap,
   isEditMode,
+  canGoBack,
   onClose,
   onNavigate,
+  onBack,
   onUpdateNode,
 }: Props) {
   return (
@@ -120,6 +124,23 @@ export default function PageView({
           </svg>
           graph view
         </button>
+        {canGoBack && onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
+          >
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M10 6H2M6 10L2 6l4-4" />
+            </svg>
+            back
+          </button>
+        )}
         <span className="text-[11px] text-muted">
           graph /{" "}
           <span className="text-accent">
