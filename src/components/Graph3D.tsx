@@ -652,41 +652,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
       }
 
       const activeMM = activeMarqueeModeRef.current
-      if (activeMM !== 'none' && e.button === 0 && !isShift) {
-        // Start Marquee Select
-        marqueeStartRef.current = { x: e.clientX, y: e.clientY }
-        marqueePathRef.current = [{ x: e.clientX, y: e.clientY }]
-        
-        // Clear if not holding multi-select modifier (windows: ctrl, mac: meta. let's just use meta/ctrl or shift)
-        if (!e.ctrlKey && !e.metaKey) {
-          selectedNodeIdsRef.current.clear()
-        }
-        
-        if (activeMM === 'rect') {
-          if (marqueeRectRef.current) {
-            marqueeRectRef.current.classList.remove('hidden')
-            marqueeRectRef.current.setAttribute('x', String(e.clientX))
-            marqueeRectRef.current.setAttribute('y', String(e.clientY))
-            marqueeRectRef.current.setAttribute('width', '0')
-            marqueeRectRef.current.setAttribute('height', '0')
-          }
-        } else if (activeMM === 'freehand') {
-          if (marqueePolygonRef.current) {
-            marqueePolygonRef.current.classList.remove('hidden')
-            marqueePolygonRef.current.setAttribute('points', `${e.clientX},${e.clientY}`)
-          }
-        }
-        return
-      }
+      const hit = getHit(e.clientX, e.clientY)
 
-      // Check context menu for marquee selection (Right-click inside a selected node or while holding shift)
       if (e.button === 2 && lockCameraEnabledRef.current) {
-        const hit = getHit(e.clientX, e.clientY)
         if (hit && 'node' in hit) {
           lockedNodeIdRef.current = hit.node.id
         }
       } else if (e.button !== 2 && e.button !== 1) {
-        const hit = getHit(e.clientX, e.clientY)
         if (hit && 'node' in hit) {
           if (isShift && manualModeEnabledRef.current) {
             // Manual edge drawing
@@ -716,6 +688,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
             )
             canvas.style.cursor = 'grabbing'
             if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
+
+            // Optional: Auto-select if node wasn't in selection and we're starting a drag
+            if (activeMM !== 'none' && !selectedNodeIdsRef.current.has(hit.node.id)) {
+              if (!e.ctrlKey && !e.metaKey) selectedNodeIdsRef.current.clear()
+              selectedNodeIdsRef.current.add(hit.node.id)
+            }
           }
         } else if (hit && 'source' in hit && edgeDragEnabledRef.current && !isShift) {
           // Standard edge drag
@@ -733,11 +711,32 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           draggedLinkDragPtRef.current = null
           canvas.style.cursor = 'grabbing'
           if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
-        }
-      } else if (e.button === 2 && lockCameraEnabledRef.current) {
-        const hit = getHit(e.clientX, e.clientY)
-        if (hit && 'node' in hit) {
-          lockedNodeIdRef.current = hit.node.id
+        } else {
+          // Empty space clicked
+          if (activeMM !== 'none' && !isShift) {
+            // Start Marquee Select
+            marqueeStartRef.current = { x: e.clientX, y: e.clientY }
+            marqueePathRef.current = [{ x: e.clientX, y: e.clientY }]
+            
+            if (!e.ctrlKey && !e.metaKey) {
+              selectedNodeIdsRef.current.clear()
+            }
+            
+            if (activeMM === 'rect') {
+              if (marqueeRectRef.current) {
+                marqueeRectRef.current.classList.remove('hidden')
+                marqueeRectRef.current.setAttribute('x', String(e.clientX))
+                marqueeRectRef.current.setAttribute('y', String(e.clientY))
+                marqueeRectRef.current.setAttribute('width', '0')
+                marqueeRectRef.current.setAttribute('height', '0')
+              }
+            } else if (activeMM === 'freehand') {
+              if (marqueePolygonRef.current) {
+                marqueePolygonRef.current.classList.remove('hidden')
+                marqueePolygonRef.current.setAttribute('points', `${e.clientX},${e.clientY}`)
+              }
+            }
+          }
         }
       }
     }
@@ -817,8 +816,24 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           if (pt) {
             if (draggedNodeRef.current) {
               const n = draggedNodeRef.current
-              n.x = pt.x; n.y = pt.y; n.z = pt.z
-              n.vx = n.vy = n.vz = 0
+              
+              if (selectedNodeIdsRef.current.has(n.id) && selectedNodeIdsRef.current.size > 1) {
+                const dx = pt.x - n.x
+                const dy = pt.y - n.y
+                const dz = pt.z - n.z
+                selectedNodeIdsRef.current.forEach(id => {
+                  const nodeToMove = simNodesRef.current.find(sn => sn.id === id)
+                  if (nodeToMove) {
+                    nodeToMove.x += dx
+                    nodeToMove.y += dy
+                    nodeToMove.z += dz
+                    nodeToMove.vx = nodeToMove.vy = nodeToMove.vz = 0
+                  }
+                })
+              } else {
+                n.x = pt.x; n.y = pt.y; n.z = pt.z
+                n.vx = n.vy = n.vz = 0
+              }
             } else if (draggedLinkRef.current) {
               const l = draggedLinkRef.current
               if (!draggedLinkDragPtRef.current) {
