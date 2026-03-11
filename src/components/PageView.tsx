@@ -57,8 +57,7 @@ function EditableText({
           value={localVal}
           onChange={(e) => setLocalVal(e.target.value)}
           onBlur={handleBlur}
-          className={`bg-transparent outline-none resize-none overflow-hidden w-full border border-border2 focus:border-accent p-2 rounded ${className || ""}`}
-          rows={Math.max(4, localVal.split("\n").length)}
+          className={`bg-transparent outline-none resize-none overflow-y-auto min-h-[50vh] max-h-[70vh] w-full border border-border2 focus:border-accent p-3 rounded-xl shadow-inner ${className || ""}`}
         />
       );
     }
