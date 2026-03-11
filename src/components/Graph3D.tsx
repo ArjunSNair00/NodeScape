@@ -713,12 +713,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
           if (continuousPhysicsEnabledRef.current) engineRef.current?.resetPhysics()
         } else {
           // Empty space clicked
-          if (activeMM !== 'none' && !isShift) {
+          if (activeMM !== 'none') {
             // Start Marquee Select
             marqueeStartRef.current = { x: e.clientX, y: e.clientY }
             marqueePathRef.current = [{ x: e.clientX, y: e.clientY }]
             
-            if (!e.ctrlKey && !e.metaKey) {
+            // clear selection if not holding an additive/subtractive modifier
+            if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
               selectedNodeIdsRef.current.clear()
             }
             
@@ -934,7 +935,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D({ graphData, sid
               isInside = pointInPoly(sx, sy)
             }
             
-            if (isInside) selectedNodeIdsRef.current.add(sn.id)
+            if (isInside) {
+              if (e.altKey) {
+                selectedNodeIdsRef.current.delete(sn.id)
+              } else {
+                selectedNodeIdsRef.current.add(sn.id)
+              }
+            }
           })
         }
       } else if (m.totalDist < 5 && !draftEdgeRef.current) {
