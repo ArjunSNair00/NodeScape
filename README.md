@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots&demos/graph1.png" width="800" />
+  <img src="screenshots-and-demos/graph1.png" width="800" />
 </p>
 
 ---
@@ -30,7 +30,7 @@ NodeScape includes a **visual homepage** that acts as a personal graph library.
 Graphs are stored locally in your browser using **local storage**, making NodeScape an **offline-first knowledge workspace**.
 
 <p align="center">
-  <img src="screenshots&demos/homepage2.png" width="800" />
+  <img src="screenshots-and-demos/homepage2.png" width="800" />
 </p>
 
 You can:
@@ -53,7 +53,7 @@ NodeScape supports both:
 
 This allows users to explore concepts spatially or in a structured hierarchy.
 
-[![Video Thumbnail](screenshots&demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
+[![Video Thumbnail](screenshots-and-demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
 
 ### Desktop Controls
 
@@ -91,7 +91,7 @@ Users can explore concepts through:
 - breadcrumb navigation
 
 <p align="center">
-  <img src="screenshots&demos/pathmode.png" width="800" />
+  <img src="screenshots-and-demos/pathmode.png" width="800" />
 </p>
 
 ---
@@ -120,7 +120,7 @@ The hierarchy system works with both **2D and 3D modes**, helping reveal relatio
 - applications
  
 <p align="center">
-  <img src="screenshots&demos/hierarchy.png" width="700" />
+  <img src="screenshots-and-demos/hierarchy.png" width="700" />
 </p>
 
 ---
@@ -138,7 +138,7 @@ This mode:
 Users can switch freely between **2D and 3D views**.
 
 <p align="center">
-  <img src="screenshots&demos/2dmode.png" width="500" />
+  <img src="screenshots-and-demos/2dmode.png" width="500" />
 </p>
 
 ---
@@ -156,7 +156,7 @@ Each node functions like a **knowledge card** containing:
 - Address bar
 
 <p align="center">
-  <img src="screenshots&demos/note2.png" width="800" />
+  <img src="screenshots-and-demos/note2.png" width="800" />
 </p>
 
 This creates a hybrid system between:
