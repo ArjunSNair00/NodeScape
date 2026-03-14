@@ -521,8 +521,8 @@ conflict resolution
 state syncing
 ```
 allows users to build idea worlds together, see what paths each are taking
-- MongoDB / Graph database for storage in far future
-- Custom api server for ai features in Django
+- Neo4j or ArangoDB database for storage in far future
+- Django api server for ai features
 - Mobile version in React Native
  (Nodescape V3)
 
