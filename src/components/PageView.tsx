@@ -13,6 +13,7 @@ interface Props {
   uiAnimations?: boolean;
   history?: NodeData[];
   onJump?: (index: number) => void;
+  graphTitle?: string;
   onUpdateNode: (updatedNode: NodeData) => void;
 }
 
@@ -99,6 +100,7 @@ export default function PageView({
   uiAnimations = true,
   history = [],
   onJump,
+  graphTitle = "graph",
   onUpdateNode,
 }: Props) {
   const Wrapper = uiAnimations ? motion.div : ("div" as any);
@@ -155,7 +157,7 @@ export default function PageView({
           </button>
         )}
         <span className="text-[11px] text-muted truncate">
-          graph /{" "}
+          {graphTitle.toLowerCase()} /{" "}
           {history.map((h, i) => (
             <span key={`${h.id}-${i}`}>
               <button
@@ -269,23 +271,36 @@ export default function PageView({
               Connected nodes
             </h3>
             <div className="flex flex-wrap gap-2">
-              {node.connections.map((cid) => {
-                const cn = nodeMap[cid];
-                if (!cn) return null;
-                return (
-                  <button
-                    key={cid}
-                    onClick={() => onNavigate(cn)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-border bg-surface2 text-xs text-muted hover:border-accent hover:text-text hover:bg-accent/10 transition-all duration-200"
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ background: cn.hex }}
-                    />
-                    {cn.icon} {cn.label}
-                  </button>
-                );
-              })}
+              {(() => {
+                const visitedIds = new Set(history.map(h => h.id));
+                const unvisited = node.connections.filter(cid => !visitedIds.has(cid));
+                const visited = node.connections.filter(cid => visitedIds.has(cid));
+                
+                return [...unvisited, ...visited].map((cid) => {
+                  const cn = nodeMap[cid];
+                  if (!cn) return null;
+                  const isVisited = visitedIds.has(cid);
+                  return (
+                    <button
+                      key={cid}
+                      onClick={() => onNavigate(cn)}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border transition-all duration-200 text-xs ${
+                        isVisited 
+                          ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40" 
+                          : "border-border bg-surface2 text-muted hover:border-accent hover:text-text hover:bg-accent/10"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${isVisited ? "grayscale opacity-50" : ""}`}
+                        style={{ background: cn.hex }}
+                      />
+                      <span className={isVisited ? "opacity-60" : ""}>
+                        {cn.icon} {cn.label}
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </MotionDiv>
         )}

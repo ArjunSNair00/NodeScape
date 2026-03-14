@@ -121,7 +121,18 @@ export default function App() {
   };
 
   const handleNavigatePage = (node: NodeData) => {
-    if (activePage) setPageHistory((prev) => [...prev, activePage]);
+    setPageHistory((prev) => {
+      // If node is already in history, truncate to it
+      const existingIndex = prev.findIndex((p) => p.id === node.id);
+      if (existingIndex !== -1) {
+        return prev.slice(0, existingIndex);
+      }
+      // If it's already the active node, don't change history
+      if (activePage && activePage.id === node.id) return prev;
+      
+      if (activePage) return [...prev, activePage];
+      return prev;
+    });
     setActivePage(node);
   };
 
@@ -200,6 +211,7 @@ export default function App() {
                       uiAnimations={uiAnimations}
                       history={pageHistory}
                       onJump={handleJumpToHistory}
+                      graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
                     />
                   ) : (
@@ -312,6 +324,7 @@ export default function App() {
                       uiAnimations={uiAnimations}
                       history={pageHistory}
                       onJump={handleJumpToHistory}
+                      graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
                     />
                   )}
