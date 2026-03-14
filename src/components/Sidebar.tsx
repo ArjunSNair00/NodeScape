@@ -359,10 +359,54 @@ function ControlsTab({
         Graph Controls
       </p>
 
-      <BtnRow label="Jiggle graph">
-        <ActionBtn onClick={handleJiggle} wide active={jiggling}>
-          <span className={jiggling ? "animate-spin inline-block" : ""}>✦</span>
-          {jiggling ? "Jiggling…" : "Jiggle!"}
+      <BtnRow label="Idle Rotation">
+        <ActionBtn
+          onClick={() => setIdleRotate(g()?.toggleAutoRotate() ?? false)}
+          wide
+          active={idleRotate}
+        >
+          <svg
+            className={`w-3 h-3 ${idleRotate ? "animate-[spin_4s_linear_infinite]" : ""}`}
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path
+              d="M6 1C3.24 1 1 3.24 1 6s2.24 5 5 5 5-2.24 5-5M8.5 2L11 3.5 8.5 5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {idleRotate ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Physics">
+        <ActionBtn
+          onClick={() =>
+            setContinuousPhysics(g()?.toggleContinuousPhysics() ?? false)
+          }
+          wide
+          active={continuousPhysics}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path
+              d="M2 10s1.5-3 4-3 4 3 4 3M2 6s2-3 4-3 4 3 4 3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="6" cy="3" r="1.5" />
+            <circle cx="2" cy="10" r="1" />
+            <circle cx="10" cy="10" r="1" />
+          </svg>
+          {continuousPhysics ? "ON" : "OFF"}
         </ActionBtn>
       </BtnRow>
 
@@ -444,185 +488,6 @@ function ControlsTab({
             />
           </svg>
           {autoSave ? "AUTO" : "MANUAL"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Graph Growth Animation">
-        <ActionBtn
-          onClick={() => setGraphGrowthAnimation(!graphGrowthAnimation)}
-          wide
-          active={graphGrowthAnimation}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M6 2v8M2 6h8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {graphGrowthAnimation ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Expand Instead of Replace">
-        <ActionBtn
-          onClick={() => setExpandReplace(!expandReplace)}
-          wide
-          active={expandReplace}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M6 1v10M1 6h10" strokeLinecap="round" />
-          </svg>
-          {expandReplace ? "EXPAND" : "REPLACE"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Randomize positions">
-        <ActionBtn onClick={() => g()?.randomizePositions()} wide>
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M1 4h2l1-2 2 6 2-4 1 2h2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path d="M8.5 9.5l1.5-1.5-1.5-1.5M10 8H8" strokeLinecap="round" />
-          </svg>
-          Scatter
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Idle Rotation">
-        <ActionBtn
-          onClick={() => setIdleRotate(g()?.toggleAutoRotate() ?? false)}
-          wide
-          active={idleRotate}
-        >
-          <svg
-            className={`w-3 h-3 ${idleRotate ? "animate-[spin_4s_linear_infinite]" : ""}`}
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M6 1C3.24 1 1 3.24 1 6s2.24 5 5 5 5-2.24 5-5M8.5 2L11 3.5 8.5 5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {idleRotate ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Edge Hover Select">
-        <ActionBtn
-          onClick={() => setEdgeHover(g()?.toggleEdgeHover() ?? false)}
-          wide
-          active={edgeHover}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M2.5 9.5l7-7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="2.5" cy="9.5" r="1.5" />
-            <circle cx="9.5" cy="2.5" r="1.5" />
-          </svg>
-          {edgeHover ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Edge Dragging">
-        <ActionBtn
-          onClick={() => setEdgeDrag(g()?.toggleEdgeDrag() ?? false)}
-          wide
-          active={edgeDrag}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M1 6 L11 6" strokeLinecap="round" />
-            <path
-              d="M9 4l2 2-2 2M3 8L1 6l2-2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {edgeDrag ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Physics">
-        <ActionBtn
-          onClick={() =>
-            setContinuousPhysics(g()?.toggleContinuousPhysics() ?? false)
-          }
-          wide
-          active={continuousPhysics}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M2 10s1.5-3 4-3 4 3 4 3M2 6s2-3 4-3 4 3 4 3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="6" cy="3" r="1.5" />
-            <circle cx="2" cy="10" r="1" />
-            <circle cx="10" cy="10" r="1" />
-          </svg>
-          {continuousPhysics ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Randomize colours">
-        <ActionBtn onClick={() => g()?.randomizeColors()} wide>
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <circle cx="4" cy="4" r="2" />
-            <circle cx="8" cy="4" r="2" />
-            <circle cx="6" cy="8" r="2" />
-          </svg>
-          Recolour
         </ActionBtn>
       </BtnRow>
 
@@ -748,6 +613,141 @@ function ControlsTab({
             <circle cx="6" cy="6" r="1.5" />
           </svg>
           {lockCamera ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Graph Growth Animation">
+        <ActionBtn
+          onClick={() => setGraphGrowthAnimation(!graphGrowthAnimation)}
+          wide
+          active={graphGrowthAnimation}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path
+              d="M6 2v8M2 6h8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {graphGrowthAnimation ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Expand Instead of Replace">
+        <ActionBtn
+          onClick={() => setExpandReplace(!expandReplace)}
+          wide
+          active={expandReplace}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M6 1v10M1 6h10" strokeLinecap="round" />
+          </svg>
+          {expandReplace ? "EXPAND" : "REPLACE"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Jiggle graph">
+        <ActionBtn onClick={handleJiggle} wide active={jiggling}>
+          <span className={jiggling ? "animate-spin inline-block" : ""}>✦</span>
+          {jiggling ? "Jiggling…" : "Jiggle!"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Randomize positions">
+        <ActionBtn onClick={() => g()?.randomizePositions()} wide>
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path
+              d="M1 4h2l1-2 2 6 2-4 1 2h2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M8.5 9.5l1.5-1.5-1.5-1.5M10 8H8" strokeLinecap="round" />
+          </svg>
+          Scatter
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Edge Hover Select">
+        <ActionBtn
+          onClick={() => setEdgeHover(g()?.toggleEdgeHover() ?? false)}
+          wide
+          active={edgeHover}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path
+              d="M2.5 9.5l7-7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="2.5" cy="9.5" r="1.5" />
+            <circle cx="9.5" cy="2.5" r="1.5" />
+          </svg>
+          {edgeHover ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Edge Dragging">
+        <ActionBtn
+          onClick={() => setEdgeDrag(g()?.toggleEdgeDrag() ?? false)}
+          wide
+          active={edgeDrag}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M1 6 L11 6" strokeLinecap="round" />
+            <path
+              d="M9 4l2 2-2 2M3 8L1 6l2-2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {edgeDrag ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Randomize colours">
+        <ActionBtn onClick={() => g()?.randomizeColors()} wide>
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <circle cx="4" cy="4" r="2" />
+            <circle cx="8" cy="4" r="2" />
+            <circle cx="6" cy="8" r="2" />
+          </svg>
+          Recolour
         </ActionBtn>
       </BtnRow>
 

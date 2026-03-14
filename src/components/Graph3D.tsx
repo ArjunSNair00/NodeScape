@@ -1269,7 +1269,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             engineRef.current?.resetPhysics();
         } else {
           // Empty space clicked
-          if (activeMM !== "none") {
+          if (activeMM !== "none" && e.button !== 1) {
             // Start Marquee Select
             marqueeStartRef.current = { x: e.clientX, y: e.clientY };
             marqueePathRef.current = [{ x: e.clientX, y: e.clientY }];
@@ -1308,6 +1308,18 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       m.totalDist += Math.sqrt(dx * dx + dy * dy);
       m.last = { x: e.clientX, y: e.clientY };
 
+      // 🔹 Middle mouse drag → rotate camera
+      if (m.down && m.middle) {
+        sph().theta -= dx * 0.007;
+        sph().phi = Math.max(
+          0.1,
+          Math.min(Math.PI - 0.1, sph().phi - dy * 0.007),
+        );
+
+        doApplyCam();
+        return;
+      }
+
       if (m.down) {
         if (marqueeStartRef.current) {
           const pt = { x: e.clientX, y: e.clientY };
@@ -1340,17 +1352,20 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           const rect = canvas.getBoundingClientRect();
           mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
           mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
           raycasterRef.current.setFromCamera(
             mouse2Ref.current,
             cameraRef.current!,
           );
+
           const pt = new THREE.Vector3();
           raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, pt);
+
           if (pt) {
             const { sourceNode, line } = draftEdgeRef.current;
             const pos = line.geometry.attributes
               .position as THREE.BufferAttribute;
-            // Start point locked to source node's current physical position (in case it moves slightly)
+
             pos.setXYZ(
               0,
               sourceNode.node.x,
@@ -1358,9 +1373,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               sourceNode.node.z,
             );
 
-            // Re-raycast to snap to target nodes visually
             let targetPt = pt;
             const hoverHit = getHit(e.clientX, e.clientY);
+
             if (
               hoverHit &&
               "node" in hoverHit &&
@@ -1371,7 +1386,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                 hoverHit.node.y,
                 hoverHit.node.z,
               );
-              (line.material as THREE.LineBasicMaterial).color.setHex(0x34d399); // green snap
+              (line.material as THREE.LineBasicMaterial).color.setHex(0x34d399);
             } else {
               (line.material as THREE.LineBasicMaterial).color.setHex(0xffffff);
             }
@@ -1393,12 +1408,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           const rect = canvas.getBoundingClientRect();
           mouse2Ref.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
           mouse2Ref.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
           raycasterRef.current.setFromCamera(
             mouse2Ref.current,
             cameraRef.current!,
           );
+
           const pt = new THREE.Vector3();
           raycasterRef.current.ray.intersectPlane(dragPlaneRef.current, pt);
+
           if (pt) {
             if (draggedNodeRef.current) {
               const n = draggedNodeRef.current;
@@ -1410,6 +1428,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                 const dx = pt.x - n.x;
                 const dy = pt.y - n.y;
                 const dz = pt.z - n.z;
+
                 selectedNodeIdsRef.current.forEach((id) => {
                   const nodeToMove = simNodesRef.current.find(
                     (sn) => sn.id === id,
@@ -1429,20 +1448,25 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               }
             } else if (draggedLinkRef.current) {
               const l = draggedLinkRef.current;
+
               if (!draggedLinkDragPtRef.current) {
                 draggedLinkDragPtRef.current = pt.clone();
               } else {
                 const dx = pt.x - draggedLinkDragPtRef.current.x;
                 const dy = pt.y - draggedLinkDragPtRef.current.y;
                 const dz = pt.z - draggedLinkDragPtRef.current.z;
+
                 l.source.x += dx;
                 l.source.y += dy;
                 l.source.z += dz;
+
                 l.target.x += dx;
                 l.target.y += dy;
                 l.target.z += dz;
+
                 l.source.vx = l.source.vy = l.source.vz = 0;
                 l.target.vx = l.target.vy = l.target.vz = 0;
+
                 draggedLinkDragPtRef.current.copy(pt);
               }
             }
@@ -1457,20 +1481,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         !draggedLinkRef.current &&
         !draftEdgeRef.current
       ) {
-        // Pan: right-click drag OR shift+left-drag
         if (m.right || m.shift) {
           doPan(dx, dy);
-        } else if (m.middle) {
-          // Middle drag to zoom
-          sph().radius = Math.max(80, Math.min(1000, sph().radius + dy * 0.45));
         } else {
-          // Rotate
+          // Left drag rotate
           sph().theta -= dx * 0.007;
           sph().phi = Math.max(
             0.1,
             Math.min(Math.PI - 0.1, sph().phi - dy * 0.007),
           );
         }
+
         doApplyCam();
         return;
       }
@@ -1478,7 +1499,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       if (!m.down) {
         let hit = getHit(e.clientX, e.clientY);
 
-        // If mouse is over the preview div, treat it as still hovering the previewed node
         if (!hit && mouseOverPreviewRef.current && previewNodeIdRef.current) {
           const hoveredNode = nodeObjsRef.current.find(
             (o) => o.node.id === previewNodeIdRef.current,
@@ -1492,11 +1512,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           nodeObjsRef.current,
           linkObjsRef.current,
         );
+
         canvas.style.cursor = hit
           ? "grab"
           : mouseOverPreviewRef.current
             ? "default"
             : "default";
+
         showTooltip(e.clientX, e.clientY, hit);
       }
     };
