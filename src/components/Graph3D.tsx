@@ -828,7 +828,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     fogRef.current = fog;
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 3000);
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 5000);
     cameraRef.current = camera;
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.25));
@@ -902,6 +902,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       // ── physics tick (delegated to engine) ────────────────────────────────
       engineRef.current?.tick(draggedNodeRef.current?.id);
+
+      // In 2D mode, kill Z immediately after physics tick so forces never accumulate
+      if (is2DRef.current) {
+        simNodesRef.current.forEach((n) => {
+          n.z = 0;
+          n.vz = 0;
+        });
+      }
+
       syncPositions(
         nodeObjsRef.current,
         linkObjsRef.current,
@@ -997,10 +1006,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       if (is2DRef.current) {
         autoRotRef.current = false;
         sphRef.current.phi = Math.PI / 2;
-        simNodesRef.current.forEach((n) => {
-          n.z *= 0.88;
-          n.vz *= 0.4;
-        });
       }
 
       if (lockedNodeIdRef.current) {
@@ -2406,6 +2411,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           }
         }
       },
+      setSpread(mult: number) {
+        engineRef.current?.setSpread(mult);
+      },
+
+      applyHierarchyLayout() {
+        engineRef.current?.applyHierarchyLayout();
+      },
     }),
     [graphData],
   );
@@ -2909,7 +2921,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               snapshot3DRef.current = snap;
               savedSphRef.current = { ...sphRef.current };
 
-              // Bring camera in close and flatten view
+              // ← Add this: immediately zero out Z so nodes are truly flat from frame 1
+              simNodesRef.current.forEach((n) => {
+                n.z = 0;
+                n.vz = 0;
+              });
+
+              // Bring camera in close — compute tight fit based on graph spread (not done yet)
               sphRef.current.phi = Math.PI / 2;
               sphRef.current.radius = 300;
             } else {
@@ -2931,7 +2949,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               }
             }
           }}
-          title={is2D ? "Switch to 3D" : "Switch to 2D"}
+          title={
+            is2D
+              ? "Switch to 3D (tip: use hierarchy button in controls menu)"
+              : "Switch to 2D (tip: use hierarchy button in controls menu)"
+          }
           className={`flex items-center justify-center h-8 px-2.5 rounded-md border text-[10px] font-bold tracking-widest transition-all duration-200 backdrop-blur-md ${
             is2D
               ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"

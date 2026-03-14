@@ -1,5 +1,5 @@
-import * as THREE from 'three'
-import type { MutableRefObject } from 'react'
+import * as THREE from "three";
+import type { MutableRefObject } from "react";
 import {
   GraphData,
   NodeData,
@@ -7,7 +7,7 @@ import {
   LinkObj,
   SimNode,
   SimLink,
-} from '../types/graph'
+} from "../types/graph";
 import {
   initSimNodes,
   buildLinksRaw,
@@ -16,7 +16,7 @@ import {
   runPhysics,
   buildLabelSprite,
   hexToInt,
-} from '../lib/graphBuilder'
+} from "../lib/graphBuilder";
 
 /**
  * GraphStateEngine — single authority for all graph state mutations.
@@ -30,23 +30,29 @@ import {
  */
 export class GraphStateEngine {
   // ─── live sim arrays (shared with Graph3D refs) ────────────────────────────
-  public simNodes: SimNode[] = []
-  public simLinks: SimLink[] = []
+  public simNodes: SimNode[] = [];
+  public simLinks: SimLink[] = [];
 
   // ─── Three.js scene objects ────────────────────────────────────────────────
-  private nodeObjs: NodeObj[] = []
-  private linkObjs: LinkObj[] = []
+  private nodeObjs: NodeObj[] = [];
+  private linkObjs: LinkObj[] = [];
 
   // ─── physics progress ─────────────────────────────────────────────────────
-  private simTick = 0
+  private simTick = 0;
 
+  private _spreadMult = 1.0;
+
+  setSpread(mult: number) {
+    this._spreadMult = mult;
+    this.resetPhysics();
+  }
   // ─── external refs — written here, read by Graph3D's rAF loop ─────────────
-  private readonly scene: THREE.Scene
-  private readonly simNodesRef: MutableRefObject<SimNode[]>
-  private readonly simLinksRef: MutableRefObject<SimLink[]>
-  private readonly nodeObjsRef: MutableRefObject<NodeObj[]>
-  private readonly linkObjsRef: MutableRefObject<LinkObj[]>
-  private readonly simTickRef: MutableRefObject<number>
+  private readonly scene: THREE.Scene;
+  private readonly simNodesRef: MutableRefObject<SimNode[]>;
+  private readonly simLinksRef: MutableRefObject<SimLink[]>;
+  private readonly nodeObjsRef: MutableRefObject<NodeObj[]>;
+  private readonly linkObjsRef: MutableRefObject<LinkObj[]>;
+  private readonly simTickRef: MutableRefObject<number>;
 
   constructor(
     scene: THREE.Scene,
@@ -56,57 +62,68 @@ export class GraphStateEngine {
     linkObjsRef: MutableRefObject<LinkObj[]>,
     simTickRef: MutableRefObject<number>,
   ) {
-    this.scene = scene
-    this.simNodesRef = simNodesRef
-    this.simLinksRef = simLinksRef
-    this.nodeObjsRef = nodeObjsRef
-    this.linkObjsRef = linkObjsRef
-    this.simTickRef = simTickRef
+    this.scene = scene;
+    this.simNodesRef = simNodesRef;
+    this.simLinksRef = simLinksRef;
+    this.nodeObjsRef = nodeObjsRef;
+    this.linkObjsRef = linkObjsRef;
+    this.simTickRef = simTickRef;
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
 
   /** Push local arrays back into the shared refs so the renderer sees them. */
   private syncRefs() {
-    this.simNodesRef.current = this.simNodes
-    this.simLinksRef.current = this.simLinks
-    this.nodeObjsRef.current = this.nodeObjs
-    this.linkObjsRef.current = this.linkObjs
-    this.simTickRef.current  = this.simTick
+    this.simNodesRef.current = this.simNodes;
+    this.simLinksRef.current = this.simLinks;
+    this.nodeObjsRef.current = this.nodeObjs;
+    this.linkObjsRef.current = this.linkObjs;
+    this.simTickRef.current = this.simTick;
   }
 
   /** Build a SimLink pair from two already-present SimNodes, and a Three.js Line. */
-  private buildOneLinkObj(source: SimNode, target: SimNode): { simLink: SimLink; linkObj: LinkObj } | null {
+  private buildOneLinkObj(
+    source: SimNode,
+    target: SimNode,
+  ): { simLink: SimLink; linkObj: LinkObj } | null {
     const pts = [
       new THREE.Vector3(source.x, source.y, source.z),
       new THREE.Vector3(target.x, target.y, target.z),
-    ]
-    const geo = new THREE.BufferGeometry().setFromPoints(pts)
-    const color = new THREE.Color(source.hex).lerp(new THREE.Color(target.hex), 0.5)
-    const animate = sessionStorage.getItem('graphGrowthAnimation') !== 'false'
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: animate ? 0 : 0.75 })
-    const line = new THREE.Line(geo, mat)
-    this.scene.add(line)
+    ];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const color = new THREE.Color(source.hex).lerp(
+      new THREE.Color(target.hex),
+      0.5,
+    );
+    const animate = sessionStorage.getItem("graphGrowthAnimation") !== "false";
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: animate ? 0 : 0.75,
+      fog: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    this.scene.add(line);
     return {
       simLink: { source, target },
       linkObj: { line, mat, source, target, animProgress: animate ? 0 : 1 },
-    }
+    };
   }
 
   /** Dispose a single NodeObj and its sprite from the scene. Does not touch links. */
   private disposeNodeObj(obj: NodeObj) {
-    this.scene.remove(obj.mesh)
-    obj.mesh.geometry.dispose()
+    this.scene.remove(obj.mesh);
+    obj.mesh.geometry.dispose();
     if (obj.node._sprite) {
-      this.scene.remove(obj.node._sprite)
-      obj.node._sprite.material.dispose()
+      this.scene.remove(obj.node._sprite);
+      obj.node._sprite.material.dispose();
     }
   }
 
   /** Dispose a single LinkObj from the scene. */
   private disposeLinkObj(obj: LinkObj) {
-    this.scene.remove(obj.line)
-    obj.line.geometry.dispose()
+    this.scene.remove(obj.line);
+    obj.line.geometry.dispose();
   }
 
   // ── Public API ───────────────────────────────────────────────────────────────
@@ -118,54 +135,58 @@ export class GraphStateEngine {
    */
   load(data: GraphData) {
     // Capture the graph title for getGraphData()
-    this._title = data.title
+    this._title = data.title;
 
     // Detect whether topology changed (so physics restart only when needed)
-    const prevIds = this.simNodes.map(n => n.id).join(',')
-    const newIds  = data.nodes.map(n => n.id).join(',')
-    const structureChanged = prevIds !== newIds
+    const prevIds = this.simNodes.map((n) => n.id).join(",");
+    const newIds = data.nodes.map((n) => n.id).join(",");
+    const structureChanged = prevIds !== newIds;
 
     // Tear down existing scene objects
-    clearSceneObjects(this.scene, this.nodeObjs, this.linkObjs)
+    clearSceneObjects(this.scene, this.nodeObjs, this.linkObjs);
 
     // Apply saved positions into the raw NodeData before initSimNodes runs
-    const nodesWithPosition: NodeData[] = data.nodes.map(n => ({
+    const nodesWithPosition: NodeData[] = data.nodes.map((n) => ({
       ...n,
       // If a persisted position exists, use it; otherwise initSimNodes will randomise
       x: n.position?.x ?? n.x,
       y: n.position?.y ?? n.y,
       z: n.position?.z ?? n.z,
-    }))
-    const dataWithPos: GraphData = { ...data, nodes: nodesWithPosition }
+    }));
+    const dataWithPos: GraphData = { ...data, nodes: nodesWithPosition };
 
     // Build sim arrays
-    const simNodes = initSimNodes(dataWithPos)
-    const linksRaw = buildLinksRaw(dataWithPos)
+    const simNodes = initSimNodes(dataWithPos);
+    const linksRaw = buildLinksRaw(dataWithPos);
     const simLinks: SimLink[] = linksRaw
-      .map(l => ({
-        source: simNodes.find(n => n.id === l.a)!,
-        target: simNodes.find(n => n.id === l.b)!,
+      .map((l) => ({
+        source: simNodes.find((n) => n.id === l.a)!,
+        target: simNodes.find((n) => n.id === l.b)!,
       }))
-      .filter(l => l.source && l.target)
+      .filter((l) => l.source && l.target);
 
     // Build Three.js objects
-    const { nodeObjs, linkObjs } = buildSceneObjects(this.scene, simNodes, simLinks)
+    const { nodeObjs, linkObjs } = buildSceneObjects(
+      this.scene,
+      simNodes,
+      simLinks,
+    );
 
     // Store locally
-    this.simNodes = simNodes
-    this.simLinks = simLinks
-    this.nodeObjs = nodeObjs
-    this.linkObjs = linkObjs
+    this.simNodes = simNodes;
+    this.simLinks = simLinks;
+    this.nodeObjs = nodeObjs;
+    this.linkObjs = linkObjs;
 
     if (structureChanged) {
       // If nodes carry persisted positions, skip the physics warm-up so they
       // don't drift away from the saved layout. Only restart physics for a
       // brand-new graph that has no saved positions.
-      const hasPersistedPositions = data.nodes.some(n => n.position != null)
-      this.simTick = hasPersistedPositions ? 500 : 0
+      const hasPersistedPositions = data.nodes.some((n) => n.position != null);
+      this.simTick = hasPersistedPositions ? 500 : 0;
     }
 
-    this.syncRefs()
+    this.syncRefs();
   }
 
   /**
@@ -175,94 +196,124 @@ export class GraphStateEngine {
    */
   addNode(node: NodeData) {
     // Bail if already present
-    if (this.simNodes.find(n => n.id === node.id)) return
+    if (this.simNodes.find((n) => n.id === node.id)) return;
 
     // Determine starting position
-    const R = 170
-    const x = node.position?.x ?? node.x ?? (Math.random() - 0.5) * R * 2
-    const y = node.position?.y ?? node.y ?? (Math.random() - 0.5) * R * 2
-    const z = node.position?.z ?? node.z ?? (Math.random() - 0.5) * R * 2
+    const R = 170;
+    const x = node.position?.x ?? node.x ?? (Math.random() - 0.5) * R * 2;
+    const y = node.position?.y ?? node.y ?? (Math.random() - 0.5) * R * 2;
+    const z = node.position?.z ?? node.z ?? (Math.random() - 0.5) * R * 2;
 
     const simNode: SimNode = {
       ...node,
       color: hexToInt(node.hex),
-      x, y, z,
-      vx: 0, vy: 0, vz: 0,
-      radius: node.category === 'core' ? 10 : node.category === 'example' ? 8 : 7,
-    }
+      x,
+      y,
+      z,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      radius:
+        node.category === "core" ? 10 : node.category === "example" ? 8 : 7,
+    };
 
     // Three.js sphere
-    const geo = new THREE.SphereGeometry(simNode.radius, 32, 32)
+    const geo = new THREE.SphereGeometry(simNode.radius, 32, 32);
     const mat = new THREE.MeshPhongMaterial({
-      color: simNode.color, emissive: simNode.color, emissiveIntensity: 0.5,
-      shininess: 90, transparent: true, opacity: 0.95,
-    })
-    const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.set(x, y, z)
-    mesh.userData.nodeId = simNode.id
-    this.scene.add(mesh)
+      color: simNode.color,
+      emissive: simNode.color,
+      emissiveIntensity: 0.5,
+      shininess: 90,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    mesh.userData.nodeId = simNode.id;
+    this.scene.add(mesh);
 
     // Inner core
-    mesh.add(new THREE.Mesh(
-      new THREE.SphereGeometry(simNode.radius * 0.45, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18 }),
-    ))
+    mesh.add(
+      new THREE.Mesh(
+        new THREE.SphereGeometry(simNode.radius * 0.45, 16, 16),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false,
+        }),
+      ),
+    );
 
     // Glow shell
-    const glowGeo = new THREE.SphereGeometry(simNode.radius * 3, 16, 16)
+    const glowGeo = new THREE.SphereGeometry(simNode.radius * 3, 16, 16);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: simNode.color, transparent: true, opacity: 0.055, side: THREE.BackSide,
-    })
-    mesh.add(new THREE.Mesh(glowGeo, glowMat))
+      color: simNode.color,
+      transparent: true,
+      opacity: 0.055,
+      side: THREE.BackSide,
+    });
+    mesh.add(new THREE.Mesh(glowGeo, glowMat));
 
     // Label sprite
-    const { sprite, sprMat } = buildLabelSprite(simNode.label)
-    sprite.renderOrder = 999
-    this.scene.add(sprite)
-    simNode._sprite = sprite
-    simNode._sprMat = sprMat
+    const { sprite, sprMat } = buildLabelSprite(simNode.label);
+    sprite.renderOrder = 999;
+    this.scene.add(sprite);
+    simNode._sprite = sprite;
+    simNode._sprMat = sprMat;
 
-    const animate = sessionStorage.getItem('graphGrowthAnimation') !== 'false'
+    const animate = sessionStorage.getItem("graphGrowthAnimation") !== "false";
     if (animate) {
-      mesh.scale.setScalar(0)
-      if (sprite) sprite.scale.setScalar(0)
+      mesh.scale.setScalar(0);
+      if (sprite) sprite.scale.setScalar(0);
     }
 
-    const nodeObj: NodeObj = { mesh, mat, glowMat, sprMat, node: simNode, animScale: animate ? 0 : 1 }
+    const nodeObj: NodeObj = {
+      mesh,
+      mat,
+      glowMat,
+      sprMat,
+      node: simNode,
+      animScale: animate ? 0 : 1,
+    };
 
-    this.simNodes.push(simNode)
-    this.nodeObjs.push(nodeObj)
+    this.simNodes.push(simNode);
+    this.nodeObjs.push(nodeObj);
 
     // Restart physics briefly so new node settles in
-    this.simTick = Math.min(this.simTick, 350)
+    this.simTick = Math.min(this.simTick, 350);
 
-    this.syncRefs()
+    this.syncRefs();
   }
 
   /**
    * Incremental — removes a single node and all edges that touch it.
    */
   removeNode(id: string) {
-    const nodeIdx = this.simNodes.findIndex(n => n.id === id)
-    if (nodeIdx === -1) return
+    const nodeIdx = this.simNodes.findIndex((n) => n.id === id);
+    if (nodeIdx === -1) return;
 
     // Remove all edges touching this node
     const edgesToRemove = this.linkObjs.filter(
-      lo => lo.source.id === id || lo.target.id === id,
-    )
-    edgesToRemove.forEach(lo => this.disposeLinkObj(lo))
-    this.linkObjs = this.linkObjs.filter(lo => lo.source.id !== id && lo.target.id !== id)
-    this.simLinks = this.simLinks.filter(sl => sl.source.id !== id && sl.target.id !== id)
+      (lo) => lo.source.id === id || lo.target.id === id,
+    );
+    edgesToRemove.forEach((lo) => this.disposeLinkObj(lo));
+    this.linkObjs = this.linkObjs.filter(
+      (lo) => lo.source.id !== id && lo.target.id !== id,
+    );
+    this.simLinks = this.simLinks.filter(
+      (sl) => sl.source.id !== id && sl.target.id !== id,
+    );
 
     // Remove node
-    const objIdx = this.nodeObjs.findIndex(o => o.node.id === id)
+    const objIdx = this.nodeObjs.findIndex((o) => o.node.id === id);
     if (objIdx !== -1) {
-      this.disposeNodeObj(this.nodeObjs[objIdx])
-      this.nodeObjs.splice(objIdx, 1)
+      this.disposeNodeObj(this.nodeObjs[objIdx]);
+      this.nodeObjs.splice(objIdx, 1);
     }
-    this.simNodes.splice(nodeIdx, 1)
+    this.simNodes.splice(nodeIdx, 1);
 
-    this.syncRefs()
+    this.syncRefs();
   }
 
   /**
@@ -270,34 +321,34 @@ export class GraphStateEngine {
    */
   appendNodes(data: GraphData) {
     // 1. Add all nodes first
-    data.nodes.forEach(n => this.addNode(n))
+    data.nodes.forEach((n) => this.addNode(n));
     // 2. Add edges
-    data.nodes.forEach(n => {
-      n.connections.forEach(targetId => this.addEdge(n.id, targetId))
-    })
-    this.resetPhysics()
+    data.nodes.forEach((n) => {
+      n.connections.forEach((targetId) => this.addEdge(n.id, targetId));
+    });
+    this.resetPhysics();
   }
 
   /**
    * Updates multiple nodes in bulk.
    */
   updateNodes(nodes: Partial<NodeData>[]) {
-    nodes.forEach(partialN => {
-      if (!partialN.id) return
-      const existing = this.simNodes.find(en => en.id === partialN.id)
+    nodes.forEach((partialN) => {
+      if (!partialN.id) return;
+      const existing = this.simNodes.find((en) => en.id === partialN.id);
       if (existing) {
         // Just merge fields and let updateNode handle specific side effects
-        const merged = { ...existing, ...partialN } as NodeData
-        this.updateNode(merged)
+        const merged = { ...existing, ...partialN } as NodeData;
+        this.updateNode(merged);
       }
-    })
+    });
   }
 
   /**
    * Removes multiple nodes sequentially.
    */
   removeNodes(ids: string[]) {
-    ids.forEach(id => this.removeNode(id))
+    ids.forEach((id) => this.removeNode(id));
   }
 
   /**
@@ -306,13 +357,13 @@ export class GraphStateEngine {
    * Does NOT restart physics or rebuild the scene.
    */
   updateNode(updated: NodeData) {
-    const simNode = this.simNodes.find(n => n.id === updated.id)
-    const nodeObj = this.nodeObjs.find(o => o.node.id === updated.id)
-    if (!simNode || !nodeObj) return
+    const simNode = this.simNodes.find((n) => n.id === updated.id);
+    const nodeObj = this.nodeObjs.find((o) => o.node.id === updated.id);
+    if (!simNode || !nodeObj) return;
 
     // Apply scalar field updates
-    const labelChanged = simNode.label !== updated.label
-    const colorChanged = simNode.hex   !== updated.hex
+    const labelChanged = simNode.label !== updated.label;
+    const colorChanged = simNode.hex !== updated.hex;
 
     Object.assign(simNode, {
       label: updated.label,
@@ -322,34 +373,39 @@ export class GraphStateEngine {
       content: updated.content,
       connections: updated.connections,
       color: hexToInt(updated.hex),
-    })
+    });
 
     if (colorChanged) {
-      const col = new THREE.Color(updated.hex)
-      nodeObj.mat.color.set(col)
-      nodeObj.mat.emissive.set(col)
-      nodeObj.glowMat.color.set(col)
+      const col = new THREE.Color(updated.hex);
+      nodeObj.mat.color.set(col);
+      nodeObj.mat.emissive.set(col);
+      nodeObj.glowMat.color.set(col);
       // Update connected link colors
       this.linkObjs
-        .filter(lo => lo.source.id === updated.id || lo.target.id === updated.id)
-        .forEach(lo => {
-          const c = new THREE.Color(lo.source.hex).lerp(new THREE.Color(lo.target.hex), 0.5)
-          lo.mat.color.set(c)
-        })
+        .filter(
+          (lo) => lo.source.id === updated.id || lo.target.id === updated.id,
+        )
+        .forEach((lo) => {
+          const c = new THREE.Color(lo.source.hex).lerp(
+            new THREE.Color(lo.target.hex),
+            0.5,
+          );
+          lo.mat.color.set(c);
+        });
     }
 
     if (labelChanged || colorChanged) {
       // Replace sprite
       if (simNode._sprite) {
-        this.scene.remove(simNode._sprite)
-        simNode._sprite.material.dispose()
+        this.scene.remove(simNode._sprite);
+        simNode._sprite.material.dispose();
       }
-      const { sprite, sprMat } = buildLabelSprite(simNode.label)
-      sprite.renderOrder = 999
-      this.scene.add(sprite)
-      simNode._sprite = sprite
-      simNode._sprMat = sprMat
-      nodeObj.sprMat = sprMat
+      const { sprite, sprMat } = buildLabelSprite(simNode.label);
+      sprite.renderOrder = 999;
+      this.scene.add(sprite);
+      simNode._sprite = sprite;
+      simNode._sprMat = sprMat;
+      nodeObj.sprMat = sprMat;
     }
 
     // No syncRefs needed — we mutated in-place; render loop already has the refs
@@ -359,28 +415,31 @@ export class GraphStateEngine {
    * Incremental — adds an edge between two existing nodes.
    */
   addEdge(sourceId: string, targetId: string) {
-    const source = this.simNodes.find(n => n.id === sourceId)
-    const target = this.simNodes.find(n => n.id === targetId)
-    if (!source || !target) return
+    const source = this.simNodes.find((n) => n.id === sourceId);
+    const target = this.simNodes.find((n) => n.id === targetId);
+    if (!source || !target) return;
 
     // De-duplicate
     const exists = this.simLinks.some(
-      l => (l.source.id === sourceId && l.target.id === targetId) ||
-           (l.source.id === targetId && l.target.id === sourceId),
-    )
-    if (exists) return
+      (l) =>
+        (l.source.id === sourceId && l.target.id === targetId) ||
+        (l.source.id === targetId && l.target.id === sourceId),
+    );
+    if (exists) return;
 
-    const result = this.buildOneLinkObj(source, target)
-    if (!result) return
+    const result = this.buildOneLinkObj(source, target);
+    if (!result) return;
 
-    this.simLinks.push(result.simLink)
-    this.linkObjs.push(result.linkObj)
+    this.simLinks.push(result.simLink);
+    this.linkObjs.push(result.linkObj);
 
     // Also update the NodeData connections array on both simNodes
-    if (!source.connections.includes(targetId)) source.connections.push(targetId)
-    if (!target.connections.includes(sourceId)) target.connections.push(sourceId)
+    if (!source.connections.includes(targetId))
+      source.connections.push(targetId);
+    if (!target.connections.includes(sourceId))
+      target.connections.push(sourceId);
 
-    this.syncRefs()
+    this.syncRefs();
   }
 
   /**
@@ -388,34 +447,35 @@ export class GraphStateEngine {
    */
   removeEdge(sourceId: string, targetId: string) {
     const idx = this.linkObjs.findIndex(
-      lo => (lo.source.id === sourceId && lo.target.id === targetId) ||
-            (lo.source.id === targetId && lo.target.id === sourceId),
-    )
-    if (idx === -1) return
-    this.disposeLinkObj(this.linkObjs[idx])
-    this.linkObjs.splice(idx, 1)
-    this.simLinks.splice(idx, 1)
+      (lo) =>
+        (lo.source.id === sourceId && lo.target.id === targetId) ||
+        (lo.source.id === targetId && lo.target.id === sourceId),
+    );
+    if (idx === -1) return;
+    this.disposeLinkObj(this.linkObjs[idx]);
+    this.linkObjs.splice(idx, 1);
+    this.simLinks.splice(idx, 1);
 
     // Clean up connections arrays
-    const src = this.simNodes.find(n => n.id === sourceId)
-    const tgt = this.simNodes.find(n => n.id === targetId)
-    if (src) src.connections = src.connections.filter(id => id !== targetId)
-    if (tgt) tgt.connections = tgt.connections.filter(id => id !== sourceId)
+    const src = this.simNodes.find((n) => n.id === sourceId);
+    const tgt = this.simNodes.find((n) => n.id === targetId);
+    if (src) src.connections = src.connections.filter((id) => id !== targetId);
+    if (tgt) tgt.connections = tgt.connections.filter((id) => id !== sourceId);
 
-    this.syncRefs()
+    this.syncRefs();
   }
 
   /**
    * Removes all nodes and edges from the scene and resets state.
    */
   clearGraph() {
-    clearSceneObjects(this.scene, this.nodeObjs, this.linkObjs)
-    this.simNodes = []
-    this.simLinks = []
-    this.nodeObjs = []
-    this.linkObjs = []
-    this.simTick  = 0
-    this.syncRefs()
+    clearSceneObjects(this.scene, this.nodeObjs, this.linkObjs);
+    this.simNodes = [];
+    this.simLinks = [];
+    this.nodeObjs = [];
+    this.linkObjs = [];
+    this.simTick = 0;
+    this.syncRefs();
   }
 
   /**
@@ -426,16 +486,22 @@ export class GraphStateEngine {
    */
   tick(draggedNodeId?: string) {
     if (this.simTick < 500) {
-      const maxV = runPhysics(this.simNodes, this.simLinks, this.simTick, draggedNodeId)
-      
+      const maxV = runPhysics(
+        this.simNodes,
+        this.simLinks,
+        this.simTick,
+        draggedNodeId,
+        this._spreadMult,
+      );
+
       // Automatic stabilization: stop if movement is negligible
       if (maxV < 0.001 && this.simTick > 10) {
-        this.simTick = 500
+        this.simTick = 500;
       } else {
-        this.simTick++
+        this.simTick++;
       }
-      
-      this.simTickRef.current = this.simTick
+
+      this.simTickRef.current = this.simTick;
     }
   }
 
@@ -446,13 +512,13 @@ export class GraphStateEngine {
    *                Pass a smaller number (e.g. 120) for a gentle nudge.
    */
   resetPhysics(amount = 500) {
-    this.simTick = Math.max(0, this.simTick - amount)
-    this.simTickRef.current = this.simTick
+    this.simTick = Math.max(0, this.simTick - amount);
+    this.simTickRef.current = this.simTick;
   }
 
   /** Returns true while physics is still settling (simTick < 500). */
   isPhysicsActive(): boolean {
-    return this.simTick < 500
+    return this.simTick < 500;
   }
 
   /**
@@ -461,22 +527,83 @@ export class GraphStateEngine {
    * Replaces the old getFreshData() imperative-handle method.
    */
   getGraphData(): GraphData {
-    const nodes: NodeData[] = this.simNodes.map(n => ({
-      id:          n.id,
-      label:       n.label,
-      icon:        n.icon,
-      hex:         n.hex,
-      category:    n.category,
-      content:     n.content,
+    const nodes: NodeData[] = this.simNodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      icon: n.icon,
+      hex: n.hex,
+      category: n.category,
+      content: n.content,
       connections: [...n.connections],
-      position:    { x: n.x, y: n.y, z: n.z },
-    }))
+      position: { x: n.x, y: n.y, z: n.z },
+    }));
 
     // Recover title from the original graphData that was last load()ed.
     // We store it on load so getGraphData() can reconstruct the full GraphData.
-    return { title: this._title, nodes }
+    return { title: this._title, nodes };
+  }
+
+  applyHierarchyLayout() {
+    const nodes = this.simNodes;
+    if (nodes.length === 0) return;
+
+    // Find root: node with most connections
+    const root = [...nodes].sort(
+      (a, b) => b.connections.length - a.connections.length,
+    )[0];
+
+    // BFS to assign levels
+    const levelMap = new Map<string, number>();
+    const queue: string[] = [root.id];
+    levelMap.set(root.id, 0);
+
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      const node = nodes.find((n) => n.id === id);
+      if (!node) continue; // ← guard against missing nodes
+      const level = levelMap.get(id)!;
+      node.connections.forEach((cid) => {
+        if (!levelMap.has(cid) && nodes.find((n) => n.id === cid)) {
+          // ← guard cid exists
+          levelMap.set(cid, level + 1);
+          queue.push(cid);
+        }
+      });
+    }
+
+    // Any disconnected nodes get level 0
+    nodes.forEach((n) => {
+      if (!levelMap.has(n.id)) levelMap.set(n.id, 0);
+    });
+
+    // Group by level
+    const levels = new Map<number, string[]>();
+    levelMap.forEach((lvl, id) => {
+      if (!levels.has(lvl)) levels.set(lvl, []);
+      levels.get(lvl)!.push(id);
+    });
+
+    // Assign positions
+    const levelSpacing = 120;
+    const nodeSpacing = 100;
+    levels.forEach((ids, lvl) => {
+      const totalWidth = (ids.length - 1) * nodeSpacing;
+      ids.forEach((id, i) => {
+        const node = nodes.find((n) => n.id === id);
+        if (!node) return; // ← guard
+        node.x = i * nodeSpacing - totalWidth / 2;
+        node.y = -lvl * levelSpacing;
+        node.z = this.simNodes.indexOf(node) * 0.1;
+        node.vx = node.vy = node.vz = 0;
+      });
+    });
+
+    this.simTick = 500; // mark physics as settled
+    this.simTickRef.current = 500;
+    this.syncRefs();
+    this.syncRefs();
   }
 
   // Store title separately since SimNode doesn't carry it (assigned in load())
-  private _title = 'Knowledge Graph'
+  private _title = "Knowledge Graph";
 }

@@ -249,6 +249,7 @@ function ControlsTab({
 
   const [resetPositions, setResetPositions] = useState(true);
   const [resetColors, setResetColors] = useState(true);
+  const [spreadLevel, setSpreadLevel] = useState(5); // 1-9, 5 = default (×1.0)
 
   useEffect(() => {
     sessionStorage.setItem("labelLevel", labelLevel.toString());
@@ -648,6 +649,77 @@ function ControlsTab({
         <ActionBtn onClick={handleJiggle} wide active={jiggling}>
           <span className={jiggling ? "animate-spin inline-block" : ""}>✦</span>
           {jiggling ? "Jiggling…" : "Jiggle!"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label={`Node spread · ${spreadLevel}/9`}>
+        <ActionBtn
+          onClick={() => {
+            const next = Math.max(1, Math.min(9, spreadLevel - 1));
+            setSpreadLevel(next);
+            const mult = 0.3 + ((next - 1) / 8) * 2.7;
+            g()?.setSpread(mult);
+          }}
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 14 14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M3 7h8" strokeLinecap="round" />
+          </svg>
+        </ActionBtn>
+        <div className="flex items-end gap-0.5 h-5 w-12">
+          {Array.from({ length: 9 }, (_, i) => (
+            <div
+              key={i}
+              className="flex-1 rounded-sm transition-all duration-150"
+              style={{
+                height: `${25 + i * 8}%`,
+                background:
+                  i < spreadLevel ? "var(--accent)" : "var(--border2)",
+                opacity: i < spreadLevel ? 1 : 0.5,
+              }}
+            />
+          ))}
+        </div>
+        <ActionBtn
+          onClick={() => {
+            const next = Math.max(1, Math.min(9, spreadLevel + 1));
+            setSpreadLevel(next);
+            const mult = 0.3 + ((next - 1) / 8) * 2.7;
+            g()?.setSpread(mult);
+          }}
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            viewBox="0 0 14 14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M7 3v8M3 7h8" strokeLinecap="round" />
+          </svg>
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="Auto Layout">
+        <ActionBtn onClick={() => g()?.applyHierarchyLayout()} wide>
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <circle cx="6" cy="2" r="1.5" />
+            <circle cx="2" cy="9" r="1.5" />
+            <circle cx="10" cy="9" r="1.5" />
+            <path d="M6 3.5v2M6 5.5l-3 2M6 5.5l3 2" strokeLinecap="round" />
+          </svg>
+          Hierarchy (for 2d graphs)
         </ActionBtn>
       </BtnRow>
 

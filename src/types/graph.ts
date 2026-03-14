@@ -78,6 +78,8 @@ export interface Spherical {
 
 // Imperative actions exposed from Graph3D via useImperativeHandle
 export interface GraphHandle {
+  setSpread(mult: number): void;
+  applyHierarchyLayout(): void;
   jiggle: () => void;
   randomizePositions: () => void;
   randomizeColors: () => void;
