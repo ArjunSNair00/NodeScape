@@ -1,5 +1,5 @@
-<p align="center">
-🌌 <strong>NodeScape</strong>
+<p align="center" style="font-size: 3rem; font-weight: bold;">
+  🌌 NodeScape
 </p>
 
 <p align="center">
