@@ -7,7 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - AI-powered graph generation
 - 3D knowledge graph explorer
+- Physics Engine for nodes interaction (repulsion, spring physics)
 - Node pages for concept notes
+- LocalStorage for graphs
 - Graph library homepage
 - Node index sidebar
 - Manual graph editing
