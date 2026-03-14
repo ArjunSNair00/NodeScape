@@ -10,6 +10,7 @@ interface Props {
   onClose: () => void;
   onNavigate: (node: NodeData) => void;
   onBack?: () => void;
+  uiAnimations?: boolean;
   onUpdateNode: (updatedNode: NodeData) => void;
 }
 
@@ -93,17 +94,25 @@ export default function PageView({
   onClose,
   onNavigate,
   onBack,
+  uiAnimations = true,
   onUpdateNode,
 }: Props) {
+  const Wrapper = uiAnimations ? motion.div : ("div" as any);
+  const MotionH1 = uiAnimations ? motion.h1 : ("h1" as any);
+  const MotionDiv = uiAnimations ? motion.div : ("div" as any);
+  const MotionSpan = uiAnimations ? motion.span : ("span" as any);
+
   return (
-    <motion.div
-      key={node.id}
-      initial={{ opacity: 0, y: 22 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 22 }}
-      transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-      className="absolute inset-0 z-30 bg-bg flex flex-col overflow-y-auto"
-    >
+      <Wrapper
+        key={node.id}
+        {...(uiAnimations ? {
+          initial: { opacity: 0, y: 22 },
+          animate: { opacity: 1, y: 0 },
+          exit: { opacity: 0, y: 22 },
+          transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] }
+        } : {})}
+        className="absolute inset-0 z-30 bg-bg flex flex-col overflow-y-auto"
+      >
       {/* Header */}
       <div
         className="sticky top-0 z-10 flex items-center gap-4 px-7 py-3.5 border-b border-border backdrop-blur-xl"
@@ -151,10 +160,12 @@ export default function PageView({
 
       {/* Body */}
       <div className="max-w-2xl mx-auto w-full px-10 py-14 pb-20">
-        <motion.span
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.05 }}
+        <MotionSpan
+          {...(uiAnimations ? {
+            initial: { scale: 0.8, opacity: 0 },
+            animate: { scale: 1, opacity: 1 },
+            transition: { delay: 0.05 }
+          } : {})}
           className="text-4xl block mb-5"
         >
           <EditableText
@@ -163,12 +174,14 @@ export default function PageView({
             onChange={(val) => onUpdateNode({ ...node, icon: val })}
             className="w-16"
           />
-        </motion.span>
+        </MotionSpan>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.08 }}
+        <MotionDiv
+          {...(uiAnimations ? {
+            initial: { opacity: 0 },
+            animate: { opacity: 1 },
+            transition: { delay: 0.08 }
+          } : {})}
           className="flex items-center gap-2 text-[10px] text-muted tracking-[0.15em] uppercase mb-3"
         >
           <span className="inline-block w-6 h-px bg-border" />
@@ -178,12 +191,14 @@ export default function PageView({
             onChange={(val) => onUpdateNode({ ...node, category: val })}
             className="flex-1"
           />
-        </motion.div>
+        </MotionDiv>
 
-        <motion.h1
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+        <MotionH1
+          {...(uiAnimations ? {
+            initial: { opacity: 0, y: 8 },
+            animate: { opacity: 1, y: 0 },
+            transition: { delay: 0.1 }
+          } : {})}
           className="font-serif text-[42px] leading-[1.15] mb-7 text-text"
         >
           <EditableText
@@ -191,22 +206,26 @@ export default function PageView({
             isEditMode={isEditMode}
             onChange={(val) => onUpdateNode({ ...node, label: val })}
           />
-        </motion.h1>
+        </MotionH1>
 
-        <motion.div
-          initial={{ scaleX: 0, originX: 0 }}
-          animate={{ scaleX: 1 }}
-          transition={{ delay: 0.15, duration: 0.4 }}
+        <MotionDiv
+          {...(uiAnimations ? {
+            initial: { scaleX: 0, originX: 0 },
+            animate: { scaleX: 1 },
+            transition: { delay: 0.15, duration: 0.4 }
+          } : {})}
           className="h-px mb-7 opacity-40"
           style={{
             background: "linear-gradient(to right, #7c6af7, transparent)",
           }}
         />
 
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18 }}
+        <MotionDiv
+          {...(uiAnimations ? {
+            initial: { opacity: 0, y: 6 },
+            animate: { opacity: 1, y: 0 },
+            transition: { delay: 0.18 }
+          } : {})}
           className="text-sm leading-[1.85] text-[#a0a0be] font-light [&_strong]:text-text [&_strong]:font-medium"
         >
           <EditableText
@@ -217,14 +236,16 @@ export default function PageView({
             dangerouslySetInnerHTML={{ __html: node.content }}
             onChange={(val) => onUpdateNode({ ...node, content: val })}
           />
-        </motion.div>
+        </MotionDiv>
 
         {/* Connections */}
         {node.connections.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.25 }}
+          <MotionDiv
+            {...(uiAnimations ? {
+              initial: { opacity: 0 },
+              animate: { opacity: 1 },
+              transition: { delay: 0.25 }
+            } : {})}
             className="mt-12"
           >
             <h3 className="text-[10px] tracking-[0.15em] text-muted uppercase mb-4">
@@ -249,9 +270,9 @@ export default function PageView({
                 );
               })}
             </div>
-          </motion.div>
+          </MotionDiv>
         )}
       </div>
-    </motion.div>
+    </Wrapper>
   );
 }

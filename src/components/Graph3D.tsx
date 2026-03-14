@@ -49,6 +49,8 @@ interface Props {
   onNodeRename?: (id: string, label: string) => void;
   isSplitMode?: boolean;
   onToggleSplitMode?: () => void;
+  uiAnimations?: boolean;
+  onToggleUiAnimations?: () => void;
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -170,6 +172,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     onNodeRename,
     isSplitMode = false,
     onToggleSplitMode,
+    uiAnimations = true,
+    onToggleUiAnimations,
   },
   ref,
 ) {

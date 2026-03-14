@@ -13,6 +13,8 @@ interface Props {
   onGraphChange: (data: GraphData) => void;
   onSave: () => void;
   onGoHome: () => void;
+  uiAnimations?: boolean;
+  onToggleUiAnimations?: () => void;
 }
 
 type Tab = "ai" | "prompt" | "paste" | "editor" | "controls" | "info";
@@ -35,6 +37,8 @@ export default function Sidebar({
   onGraphChange,
   onSave,
   onGoHome,
+  uiAnimations = true,
+  onToggleUiAnimations,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("ai");
   const [copied, setCopied] = useState(false);
@@ -75,14 +79,10 @@ export default function Sidebar({
   };
 
   return (
-    <AnimatePresence>
+    <>
       {open && (
-        <motion.div
+        <div
           key="sidebar"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
           className="absolute top-0 right-0 bottom-0 w-[400px] flex flex-col z-50 border-l border-border"
           style={{ background: "var(--surface)" }}
         >
@@ -184,15 +184,17 @@ export default function Sidebar({
               <ControlsTab
                 graphRef={graphRef}
                 originalGraphData={originalGraphData}
+                uiAnimations={uiAnimations}
+                onToggleUiAnimations={onToggleUiAnimations}
               />
             )}
             {activeTab === "info" && (
               <InfoTab graphData={graphData} linkCount={linkCount} />
             )}
           </div>
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }
 
@@ -200,9 +202,13 @@ export default function Sidebar({
 function ControlsTab({
   graphRef,
   originalGraphData,
+  uiAnimations,
+  onToggleUiAnimations,
 }: {
   graphRef: React.RefObject<GraphHandle | null>;
   originalGraphData?: GraphData;
+  uiAnimations: boolean;
+  onToggleUiAnimations?: () => void;
 }) {
   const [jiggling, setJiggling] = useState(false);
   const [physicsOffWarning, setPhysicsOffWarning] = useState(false);
@@ -705,6 +711,25 @@ function ControlsTab({
             />
           </svg>
           {edgeDrag ? "ON" : "OFF"}
+        </ActionBtn>
+      </BtnRow>
+
+      <BtnRow label="UI Animations">
+        <ActionBtn
+          onClick={onToggleUiAnimations || (() => {})}
+          wide
+          active={uiAnimations}
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M2 2l8 8M10 2l-8 8" strokeLinecap="round" />
+          </svg>
+          {uiAnimations ? "ON" : "OFF"}
         </ActionBtn>
       </BtnRow>
 

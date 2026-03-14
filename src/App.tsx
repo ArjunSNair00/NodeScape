@@ -24,6 +24,9 @@ export default function App() {
   const [pageHistory, setPageHistory] = useState<NodeData[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [uiAnimations, setUiAnimations] = useState(
+    () => sessionStorage.getItem("uiAnimations") !== "false",
+  );
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splitWidth, setSplitWidth] = useState(50); // percentage
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -165,27 +168,45 @@ export default function App() {
         ) : (
           <div key="graph" className="absolute inset-0 overflow-hidden">
             {/* Graph area — fills the full container */}
-            <div ref={splitContainerRef} className="relative w-full h-full flex overflow-hidden">
-              {isSplitMode && activePage && (
+            <div ref={splitContainerRef} className={`relative w-full h-full flex overflow-hidden ${uiAnimations ? "transition-all duration-300" : ""}`}>
+              {isSplitMode && (
                 <div 
                   style={{ width: `${splitWidth}%` }}
-                  className="relative h-full border-r border-border shrink-0 z-30"
+                  className="relative h-full border-r border-border shrink-0 z-30 bg-bg"
                 >
-                  <PageView
-                    node={activePage}
-                    nodeMap={Object.fromEntries(
-                      graphData.nodes.map((n) => [n.id, n]),
-                    )}
-                    onClose={() => {
-                      setActivePage(null);
-                      setPageHistory([]);
-                    }}
-                    onNavigate={handleNavigatePage}
-                    onBack={handleBackPage}
-                    canGoBack={pageHistory.length > 0}
-                    isEditMode={isEditMode}
-                    onUpdateNode={handleNodeUpdate}
-                  />
+                  {activePage ? (
+                    <PageView
+                      node={activePage}
+                      nodeMap={Object.fromEntries(
+                        graphData.nodes.map((n) => [n.id, n]),
+                      )}
+                      onClose={() => {
+                        setActivePage(null);
+                        setPageHistory([]);
+                      }}
+                      onNavigate={handleNavigatePage}
+                      onBack={handleBackPage}
+                      canGoBack={pageHistory.length > 0}
+                      isEditMode={isEditMode}
+                      uiAnimations={uiAnimations}
+                      onUpdateNode={handleNodeUpdate}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-in fade-in zoom-in duration-500">
+                      <div className="w-20 h-20 mb-8 rounded-3xl border border-dashed border-accent/20 flex items-center justify-center text-accent/30 bg-accent/5">
+                        <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                           <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                           <path d="M13 2v7h7" />
+                           <circle cx="12" cy="15" r="3" />
+                           <path d="M10 13l4 4" />
+                        </svg>
+                      </div>
+                      <h3 className="text-base font-medium text-text mb-3 tracking-tight">No Node Selected</h3>
+                      <p className="text-[11px] text-muted leading-relaxed max-w-[280px]">
+                        The graph is waiting. Select any node in the view to reveal its contents in this pane.
+                      </p>
+                    </div>
+                  )}
                   <div 
                     onMouseDown={startResizing}
                     className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-50 group pointer-events-auto"
@@ -211,6 +232,14 @@ export default function App() {
                   onToggleEditMode={() => setIsEditMode((o) => !o)}
                   isSplitMode={isSplitMode}
                   onToggleSplitMode={() => setIsSplitMode(!isSplitMode)}
+                  uiAnimations={uiAnimations}
+                  onToggleUiAnimations={() => {
+                    setUiAnimations((p) => {
+                      const n = !p;
+                      sessionStorage.setItem("uiAnimations", String(n));
+                      return n;
+                    });
+                  }}
                   onGoHome={goHome}
                   onSave={handleSave}
                   onRename={(title: string) => {
@@ -243,6 +272,14 @@ export default function App() {
                   onGraphChange={handleGraphChange}
                   onSave={handleSave}
                   onGoHome={goHome}
+                  uiAnimations={uiAnimations}
+                  onToggleUiAnimations={() => {
+                    setUiAnimations((p) => {
+                      const n = !p;
+                      sessionStorage.setItem("uiAnimations", String(n));
+                      return n;
+                    });
+                  }}
                 />
 
                 {/* Page view overlay (Non-Split Mode) */}
@@ -261,6 +298,7 @@ export default function App() {
                       onBack={handleBackPage}
                       canGoBack={pageHistory.length > 0}
                       isEditMode={isEditMode}
+                      uiAnimations={uiAnimations}
                       onUpdateNode={handleNodeUpdate}
                     />
                   )}
