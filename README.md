@@ -14,10 +14,6 @@
   NodeScape is an interactive AI-powered spatial knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
 </p>
 
-<p align="center">
-  <img src="screenshots-and-demos/graph1.png" width="800" />
-</p>
-
 ---
 
 # ✨ Features
