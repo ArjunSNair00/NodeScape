@@ -1178,7 +1178,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     const onMouseDown = (e: MouseEvent) => {
       e.preventDefault();
       kickIdle();
+
       const isShift = e.shiftKey;
+
       mouseRef.current = {
         down: true,
         right: e.button === 2,
@@ -1192,56 +1194,82 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       const activeMM = activeMarqueeModeRef.current;
       const hit = getHit(e.clientX, e.clientY);
 
-      if (e.button === 2 && lockCameraEnabledRef.current) {
+      // ── Middle click → lock / unlock camera ─────────────────────
+      if (e.button === 1) {
         if (hit && "node" in hit) {
-          lockedNodeIdRef.current = hit.node.id;
+          const node = hit.node;
+
+          if (lockedNodeIdRef.current === node.id) {
+            // Clicking same node again → unlock
+            lockedNodeIdRef.current = null;
+          } else {
+            // Lock camera to node
+            lockedNodeIdRef.current = node.id;
+            panTargetRef.current.set(node.x, node.y, node.z);
+          }
+        } else {
+          // Middle click empty space → unlock
+          lockedNodeIdRef.current = null;
         }
-      } else if (e.button !== 2 && e.button !== 1) {
+
+        return; // IMPORTANT: prevents drag/marquee logic from triggering
+      }
+
+      // ── Left click interactions ─────────────────────────────────
+      if (e.button === 0) {
         if (hit && "node" in hit) {
           if (isShift && manualModeEnabledRef.current) {
             // Manual edge drawing
             const n = hit.node;
+
             const geo = new THREE.BufferGeometry().setFromPoints([
               new THREE.Vector3(n.x, n.y, n.z),
               new THREE.Vector3(n.x, n.y, n.z),
             ]);
+
             const mat = new THREE.LineBasicMaterial({
               color: 0xffffff,
               transparent: true,
               opacity: 0.8,
               depthWrite: false,
             });
+
             const line = new THREE.Line(geo, mat);
             sceneRef.current?.add(line);
             draftEdgeRef.current = { sourceNode: hit as NodeObj, line };
 
-            // Set up drag plane coplanar with the node facing camera
             const camDir = new THREE.Vector3();
             cameraRef.current!.getWorldDirection(camDir);
+
             dragPlaneRef.current.setFromNormalAndCoplanarPoint(
               camDir,
               new THREE.Vector3(n.x, n.y, n.z),
             );
+
             canvas.style.cursor = "crosshair";
           } else if (!isShift) {
-            // Standard node drag
+            // Node drag
             draggedNodeRef.current = hit.node;
+
             const camDir = new THREE.Vector3();
             cameraRef.current!.getWorldDirection(camDir);
+
             dragPlaneRef.current.setFromNormalAndCoplanarPoint(
               camDir,
               new THREE.Vector3(hit.node.x, hit.node.y, hit.node.z),
             );
+
             canvas.style.cursor = "grabbing";
+
             if (continuousPhysicsEnabledRef.current)
               engineRef.current?.resetPhysics();
 
-            // Optional: Auto-select if node wasn't in selection and we're starting a drag
             if (
               activeMM !== "none" &&
               !selectedNodeIdsRef.current.has(hit.node.id)
             ) {
               if (!e.ctrlKey && !e.metaKey) selectedNodeIdsRef.current.clear();
+
               selectedNodeIdsRef.current.add(hit.node.id);
             }
           }
@@ -1251,10 +1279,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           edgeDragEnabledRef.current &&
           !isShift
         ) {
-          // Standard edge drag
+          // Edge drag
           draggedLinkRef.current = hit;
+
           const camDir = new THREE.Vector3();
           cameraRef.current!.getWorldDirection(camDir);
+
           dragPlaneRef.current.setFromNormalAndCoplanarPoint(
             camDir,
             new THREE.Vector3(
@@ -1263,21 +1293,20 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               (hit.source.z + hit.target.z) / 2,
             ),
           );
+
           draggedLinkDragPtRef.current = null;
           canvas.style.cursor = "grabbing";
+
           if (continuousPhysicsEnabledRef.current)
             engineRef.current?.resetPhysics();
         } else {
-          // Empty space clicked
-          if (activeMM !== "none" && e.button !== 1) {
-            // Start Marquee Select
+          // Empty space → start marquee
+          if (activeMM !== "none") {
             marqueeStartRef.current = { x: e.clientX, y: e.clientY };
             marqueePathRef.current = [{ x: e.clientX, y: e.clientY }];
 
-            // clear selection if not holding an additive/subtractive modifier
-            if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+            if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey)
               selectedNodeIdsRef.current.clear();
-            }
 
             if (activeMM === "rect") {
               if (marqueeRectRef.current) {
@@ -1525,12 +1554,26 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
     const onMouseUp = (e: MouseEvent) => {
       const m = mouseRef.current;
+
+      // Middle mouse actions are handled in onMouseDown
+      if (m.middle) {
+        draggedNodeRef.current = null;
+        draggedLinkRef.current = null;
+        draggedLinkDragPtRef.current = null;
+        mouseRef.current.down = false;
+        canvas.style.cursor = "default";
+        showTooltip(0, 0, null);
+        return;
+      }
+
       if (marqueeStartRef.current) {
         // Finish Marquee
         const path = marqueePathRef.current;
         marqueeStartRef.current = null;
+
         if (marqueeRectRef.current)
           marqueeRectRef.current.classList.add("hidden");
+
         if (marqueePolygonRef.current)
           marqueePolygonRef.current.classList.add("hidden");
 
@@ -1541,7 +1584,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           const rect = canvas.getBoundingClientRect();
           const cam = cameraRef.current!;
 
-          // Poly-point in polygon algorithm for freehand, or simple AABB for rect
           let boundMinX = Infinity,
             boundMinY = Infinity,
             boundMaxX = -Infinity,
@@ -1556,28 +1598,34 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
           const pointInPoly = (px: number, py: number) => {
             let inside = false;
+
             for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
               const xi = path[i].x,
                 yi = path[i].y;
               const xj = path[j].x,
                 yj = path[j].y;
+
               const intersect =
                 yi > py !== yj > py &&
                 px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+
               if (intersect) inside = !inside;
             }
+
             return inside;
           };
 
           const v = new THREE.Vector3();
+
           simNodesRef.current.forEach((sn) => {
             v.set(sn.x, sn.y, sn.z);
             v.project(cam);
-            // Convert from normalized device coordinates to screen pixels
+
             const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
             const sy = (-(v.y * 0.5) + 0.5) * rect.height + rect.top;
 
             let isInside = false;
+
             if (activeMarqueeModeRef.current === "rect") {
               isInside =
                 sx >= boundMinX &&
@@ -1599,26 +1647,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         }
       } else if (m.totalDist < 5 && !draftEdgeRef.current) {
         if (m.right) {
-          if (
-            manualModeEnabledRef.current ||
-            selectedNodeIdsRef.current.size > 0
-          ) {
-            const hit = getHit(e.clientX, e.clientY);
-            const hitId = hit && "node" in hit ? hit.node.id : null;
+          const hit = getHit(e.clientX, e.clientY);
+          const hitId = hit && "node" in hit ? hit.node.id : null;
 
-            // If they right-clicked a node that ISN'T in the current selection, or right clicked empty space,
-            // the hitNodeId is just the targeted node (or null)
-            setContextMenu({
-              visible: true,
-              x: e.clientX,
-              y: e.clientY,
-              hitNodeId: hitId,
-            });
-          }
+          setContextMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            hitNodeId: hitId,
+          });
         } else if (!m.shift) {
-          // Left click
           if (manualModeEnabledRef.current) {
-            // Close context menu regardless
             setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null });
 
             const hit = getHit(e.clientX, e.clientY);
@@ -1633,30 +1672,31 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                 sourceNodeId: hit.node.id,
                 hex: "#ffffff",
               });
-              clickRef.current = { time: 0, id: null }; // reset
+
+              clickRef.current = { time: 0, id: null };
             } else {
-              // Clicked on empty space. Track double clicks.
               if (
                 clickRef.current.id === "empty" &&
                 now - clickRef.current.time < 350
               ) {
-                // Trigger creation dialog
                 const rect = canvas.getBoundingClientRect();
+
                 mouse2Ref.current.x =
                   ((e.clientX - rect.left) / rect.width) * 2 - 1;
+
                 mouse2Ref.current.y =
                   -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
                 raycasterRef.current.setFromCamera(
                   mouse2Ref.current,
                   cameraRef.current!,
                 );
 
-                // Generate a spawn point roughly passing through the screen coordinate
                 const camDir = new THREE.Vector3();
                 cameraRef.current!.getWorldDirection(camDir);
 
-                // Determine coplanar target point - either the last hovered node or origin
                 let targetZPoint = new THREE.Vector3(0, 0, 0);
+
                 if (lastHoveredNodeRef.current) {
                   targetZPoint.set(
                     lastHoveredNodeRef.current.node.x,
@@ -1669,7 +1709,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                   camDir,
                   targetZPoint,
                 );
+
                 const spawnPt = new THREE.Vector3();
+
                 raycasterRef.current.ray.intersectPlane(
                   dragPlaneRef.current,
                   spawnPt,
@@ -1686,25 +1728,26 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                   spawnY: spawnPt?.y,
                   spawnZ: spawnPt?.z,
                 });
+
                 clickRef.current = { time: 0, id: null };
               } else {
                 clickRef.current = { time: now, id: "empty" };
               }
             }
           } else {
-            // Standard double-click rename & click-to-open logic
             let doubleClickedSprite = false;
             const now = Date.now();
 
-            // Close context menu if open
             setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null });
 
-            // Raycast against label sprites for double-click rename
             const rect = canvas.getBoundingClientRect();
+
             mouse2Ref.current.x =
               ((e.clientX - rect.left) / rect.width) * 2 - 1;
+
             mouse2Ref.current.y =
               -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
             raycasterRef.current.setFromCamera(
               mouse2Ref.current,
               cameraRef.current!,
@@ -1713,21 +1756,26 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             const sprites = nodeObjsRef.current
               .map((o) => o.node._sprite)
               .filter(Boolean) as THREE.Sprite[];
+
             if (sprites.length > 0) {
               const sHits = raycasterRef.current.intersectObjects(sprites);
+
               if (sHits.length > 0) {
                 const hitSprite = sHits[0].object;
+
                 const matchObj = nodeObjsRef.current.find(
                   (o) => o.node._sprite === hitSprite,
                 );
+
                 if (matchObj) {
                   const id = matchObj.node.id;
+
                   if (
                     clickRef.current.id === id &&
                     now - clickRef.current.time < 350
                   ) {
-                    // Double click!
                     doubleClickedSprite = true;
+
                     setRenamer({
                       id,
                       label: matchObj.node.label,
@@ -1735,6 +1783,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                       cy: e.clientY,
                       hex: matchObj.node.hex,
                     });
+
                     clickRef.current = { time: 0, id: null };
                   } else {
                     clickRef.current = { time: now, id };
@@ -1747,6 +1796,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
             if (!doubleClickedSprite) {
               const hit = getHit(e.clientX, e.clientY);
+
               if (hit && "node" in hit) onOpenPage(hit.node);
             }
           }
@@ -1754,8 +1804,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       }
 
       if (draftEdgeRef.current) {
-        // Handle release of manual edge draw
         const hit = getHit(e.clientX, e.clientY);
+
         if (
           hit &&
           "node" in hit &&
@@ -1767,18 +1817,21 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           );
         }
 
-        // Clean up visual line
         sceneRef.current?.remove(draftEdgeRef.current.line);
         draftEdgeRef.current.line.geometry.dispose();
         (draftEdgeRef.current.line.material as THREE.Material).dispose();
+
         draftEdgeRef.current = null;
       }
 
       draggedNodeRef.current = null;
       draggedLinkRef.current = null;
       draggedLinkDragPtRef.current = null;
+
       mouseRef.current.down = false;
+
       canvas.style.cursor = "default";
+
       showTooltip(0, 0, null);
     };
 

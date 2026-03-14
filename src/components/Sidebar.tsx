@@ -227,9 +227,6 @@ function ControlsTab({
   const [showNodeIcons, setShowNodeIcons] = useState(
     () => sessionStorage.getItem("showNodeIcons") !== "false",
   );
-  const [lockCamera, setLockCamera] = useState(
-    () => sessionStorage.getItem("lockCamera") !== "false",
-  );
   const [expandReplace, setExpandReplace] = useState(
     () => sessionStorage.getItem("expandReplace") === "true",
   );
@@ -251,7 +248,6 @@ function ControlsTab({
     sessionStorage.setItem("continuousPhysics", continuousPhysics.toString());
     sessionStorage.setItem("edgeDrag", edgeDrag.toString());
     sessionStorage.setItem("showNodeIcons", showNodeIcons.toString());
-    sessionStorage.setItem("lockCamera", lockCamera.toString());
     sessionStorage.setItem("expandReplace", expandReplace.toString());
     sessionStorage.setItem("autoSave", autoSave.toString());
     sessionStorage.setItem(
@@ -266,7 +262,6 @@ function ControlsTab({
     continuousPhysics,
     edgeDrag,
     showNodeIcons,
-    lockCamera,
     expandReplace,
     autoSave,
     graphGrowthAnimation,
@@ -589,30 +584,6 @@ function ControlsTab({
             <circle cx="6" cy="5" r="1" />
           </svg>
           {showNodeIcons ? "ON" : "OFF"}
-        </ActionBtn>
-      </BtnRow>
-
-      <BtnRow label="Lock Camera (Right-click)">
-        <ActionBtn
-          onClick={() => setLockCamera(g()?.toggleLockCamera() ?? false)}
-          wide
-          active={lockCamera}
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path
-              d="M4 1L1 1V4 M11 1L8 1 M11 1V4 M1 11L1 8 M1 11H4 M11 11L11 8 M11 11H8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle cx="6" cy="6" r="1.5" />
-          </svg>
-          {lockCamera ? "ON" : "OFF"}
         </ActionBtn>
       </BtnRow>
 
