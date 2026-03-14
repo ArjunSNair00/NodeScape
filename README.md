@@ -321,10 +321,8 @@ This is the fastest way to explore new topics.
 
 NodeScape also works with external AI tools such as:
 
-- ChatGPT
-- Claude
-- Gemini
-- Local LLMs (Ollama)
+- ChatGPT / Claude / Gemini etc.
+- Local LLMs
 
 Steps:
 
