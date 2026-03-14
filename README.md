@@ -497,7 +497,7 @@ Nodes can dynamically generate:
 
 - Snapshots for graphs (Sub-Library for internal states of graphs, tracks changes, progress of users)
 - Arrow marks for showing directions between nodes
-- New object: Relationships (Shows how a node connects to another node, 
+- New object: Relationships (Shows how a node connects to another node huge change, for NodeScape V2
 eg:-
 ```
 (Human body) -> | has | -> (heart)
@@ -506,6 +506,7 @@ eg:-
       |            |          |
      node     Relationship   node   
 ```
+
 - Encapsulation of nodes (universe inside another universe)
 - branches (parallel universe)
 - clustering (implement a tag system)
