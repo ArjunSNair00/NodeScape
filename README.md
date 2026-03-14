@@ -1,4 +1,4 @@
-<h1 align="center">🌌 NodeScape 1.5.0</h1>
+<h1 align="center">🌌 NodeScape v1.5.0</h1>
 <p align="center">
   <i>"Explore knowledge like a galaxy of interconnected ideas."</i>
 </p>
