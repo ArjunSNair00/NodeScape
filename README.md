@@ -520,6 +520,8 @@ conflict resolution
 state syncing
 ```
 allows users to build idea worlds together, see what paths each are taking
+- Mobile version in React Native
+ (Nodescape V3)
 
 ---
 
