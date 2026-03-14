@@ -772,6 +772,8 @@ function ControlsTab({
         </p>
         {[
           ["Click node", "Focus node & expand related topics"],
+          ["Click graph name", "Rename graph"],
+          ["Double click name", "Rename node"],
           ["Right click node", "Edit node"],
           ["Right click empty space", "Add node"],
           ["Middle click node", "Lock camera to node (no selection)"],

@@ -393,6 +393,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     0.3 + ((Number(sessionStorage.getItem("labelLevel") || 5) - 1) / 8) * 1.9,
   ); // user-adjustable label scale multiplier
   const jigglingRef = useRef(false); // true while jiggle animation running
+  const is2DRef = useRef(false);
+  const [is2D, setIs2D] = useState(false);
+  const snapshot3DRef = useRef<
+    Map<string, { x: number; y: number; z: number }>
+  >(new Map());
+  const savedSphRef = useRef<{
+    theta: number;
+    phi: number;
+    radius: number;
+  } | null>(null);
 
   const [renamer, setRenamer] = useState<{
     id: string | null;
@@ -982,6 +992,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       );
 
       if (autoRotRef.current) sphRef.current.theta += 0.0025;
+
+      // 2D mode: flatten Z and lock camera to top-down
+      if (is2DRef.current) {
+        autoRotRef.current = false;
+        sphRef.current.phi = Math.PI / 2;
+        simNodesRef.current.forEach((n) => {
+          n.z *= 0.88;
+          n.vz *= 0.4;
+        });
+      }
+
       if (lockedNodeIdRef.current) {
         const n = simNodesRef.current.find(
           (sn) => sn.id === lockedNodeIdRef.current,
@@ -1377,14 +1398,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       m.totalDist += Math.sqrt(dx * dx + dy * dy);
       m.last = { x: e.clientX, y: e.clientY };
 
-      // 🔹 Middle mouse drag → rotate camera
+      // 🔹 Middle mouse drag → rotate camera (or pan in 2D)
       if (m.down && m.middle) {
-        sph().theta -= dx * 0.007;
-        sph().phi = Math.max(
-          0.1,
-          Math.min(Math.PI - 0.1, sph().phi - dy * 0.007),
-        );
-
+        if (is2DRef.current) {
+          doPan(dx, dy);
+        } else {
+          sph().theta -= dx * 0.007;
+          sph().phi = Math.max(
+            0.1,
+            Math.min(Math.PI - 0.1, sph().phi - dy * 0.007),
+          );
+        }
         doApplyCam();
         return;
       }
@@ -1550,10 +1574,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         !draggedLinkRef.current &&
         !draftEdgeRef.current
       ) {
-        if (m.right || m.shift) {
+        if (m.right || m.shift || is2DRef.current) {
           doPan(dx, dy);
         } else {
-          // Left drag rotate
+          // Left drag rotate (3D only)
           sph().theta -= dx * 0.007;
           sph().phi = Math.max(
             0.1,
@@ -2864,6 +2888,57 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <line x1="12" y1="3" x2="12" y2="21" />
           </svg>
+        </button>
+
+        {/* 2D / 3D toggle */}
+        <button
+          onClick={() => {
+            const next = !is2DRef.current;
+            is2DRef.current = next;
+            setIs2D(next);
+
+            if (next) {
+              // Entering 2D — snapshot current 3D positions + camera
+              const snap = new Map<
+                string,
+                { x: number; y: number; z: number }
+              >();
+              simNodesRef.current.forEach((n) => {
+                snap.set(n.id, { x: n.x, y: n.y, z: n.z });
+              });
+              snapshot3DRef.current = snap;
+              savedSphRef.current = { ...sphRef.current };
+
+              // Bring camera in close and flatten view
+              sphRef.current.phi = Math.PI / 2;
+              sphRef.current.radius = 300;
+            } else {
+              // Exiting 2D — restore exact 3D positions + camera
+              const snap = snapshot3DRef.current;
+              simNodesRef.current.forEach((n) => {
+                const saved = snap.get(n.id);
+                if (saved) {
+                  n.x = saved.x;
+                  n.y = saved.y;
+                  n.z = saved.z;
+                  n.vx = n.vy = n.vz = 0;
+                }
+              });
+              if (savedSphRef.current) {
+                sphRef.current.theta = savedSphRef.current.theta;
+                sphRef.current.phi = savedSphRef.current.phi;
+                sphRef.current.radius = savedSphRef.current.radius;
+              }
+            }
+          }}
+          title={is2D ? "Switch to 3D" : "Switch to 2D"}
+          className={`flex items-center justify-center h-8 px-2.5 rounded-md border text-[10px] font-bold tracking-widest transition-all duration-200 backdrop-blur-md ${
+            is2D
+              ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+              : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+          }`}
+        >
+          {is2D ? "2D" : "3D"}
         </button>
 
         {/* Marquee Select Dropdown */}
