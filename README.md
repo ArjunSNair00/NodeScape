@@ -1,6 +1,6 @@
 <h1 align="center">🌌 NodeScape</h1>
 <p align="center">
-  <i>"Explore knowledge like a galaxy."</i>
+  <i>"Explore knowledge like a galaxy of interconnected ideas."</i>
 </p>
 
 <p align="center">
@@ -11,8 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>NodeScape</strong> — Explore knowledge as a living map. <br/>
-  An interactive AI-powered knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
+  NodeScape is an interactive AI-powered spatial knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
 </p>
 
 <p align="center">
@@ -360,6 +359,57 @@ AI-powered knowledge generator
 manual knowledge mapping tool
 
 You can freely mix all three approaches while building your knowledge graphs.
+
+---
+
+# 🌍 Why NodeScape Exists
+
+Most knowledge tools are **linear**.
+
+Notes look like this:
+
+```
+
+Topic
+├ Subtopic
+├ Subtopic
+└ Subtopic
+
+```
+
+But real knowledge does **not grow linearly**.
+Concepts connect across subjects, forming **networks of ideas**.
+
+For example:
+
+```
+
+Artificial Intelligence
+├ Machine Learning
+│  ├ Neural Networks
+│  │  ├ CNN
+│  │  └ Transformers
+│  └ Clustering
+├ Robotics
+└ Computer Vision
+
+```
+
+Traditional notes make it difficult to **see these relationships**.
+You scroll through pages of text instead of **exploring how ideas connect**.
+NodeScape was built to solve this problem.
+
+Instead of reading knowledge like a document, NodeScape lets you:
+
+- **navigate ideas spatially**
+- **see how concepts relate**
+- **explore topics naturally**
+- **build personal knowledge maps**
+
+It treats knowledge like a **landscape**, not a list.
+You don’t just read information — you **explore it**.
+
+---
 
 # 🔮 Future Roadmap
 
