@@ -1,130 +1,135 @@
-import { useState, useRef } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import Graph3D from './components/Graph3D'
-import PageView from './components/PageView'
-import Sidebar from './components/Sidebar'
-import HomePage from './components/HomePage'
-import { GraphData, NodeData, GraphRecord, GraphHandle } from './types/graph'
-import { DEFAULT_GRAPH } from './data/defaultGraph'
-import { useTheme } from './hooks/useTheme'
-import { useGraphLibrary } from './hooks/useGraphLibrary'
+import { useState, useRef } from "react";
+import { AnimatePresence } from "framer-motion";
+import Graph3D from "./components/Graph3D";
+import PageView from "./components/PageView";
+import Sidebar from "./components/Sidebar";
+import HomePage from "./components/HomePage";
+import { GraphData, NodeData, GraphRecord, GraphHandle } from "./types/graph";
+import { DEFAULT_GRAPH } from "./data/defaultGraph";
+import { useTheme } from "./hooks/useTheme";
+import { useGraphLibrary } from "./hooks/useGraphLibrary";
 
-type View = 'home' | 'graph'
+type View = "home" | "graph";
 
 export default function App() {
-  const { theme, toggle: toggleTheme } = useTheme()
-  const { records, saveGraph, deleteGraph, renameGraph } = useGraphLibrary()
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { records, saveGraph, deleteGraph, renameGraph } = useGraphLibrary();
 
-  const [view, setView] = useState<View>('home')
-  const [graphData, setGraphData]     = useState<GraphData>(DEFAULT_GRAPH)
-  const [originalGraphData, setOriginalGraphData] = useState<GraphData>(DEFAULT_GRAPH)
-  const [currentId, setCurrentId]     = useState<string | undefined>(undefined)
-  const [activePage, setActivePage]   = useState<NodeData | null>(null)
-  const [pageHistory, setPageHistory] = useState<NodeData[]>([])
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [isEditMode, setIsEditMode]   = useState(false)
+  const [view, setView] = useState<View>("home");
+  const [graphData, setGraphData] = useState<GraphData>(DEFAULT_GRAPH);
+  const [originalGraphData, setOriginalGraphData] =
+    useState<GraphData>(DEFAULT_GRAPH);
+  const [currentId, setCurrentId] = useState<string | undefined>(undefined);
+  const [activePage, setActivePage] = useState<NodeData | null>(null);
+  const [pageHistory, setPageHistory] = useState<NodeData[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
-  const graphRef = useRef<GraphHandle>(null)
+  const graphRef = useRef<GraphHandle>(null);
 
   // Open a saved record (or demo)
   const handleOpen = (record: GraphRecord) => {
-    setGraphData(record.data)
-    setOriginalGraphData(record.data)
-    setCurrentId(record.id === '__demo__' ? undefined : record.id)
-    setActivePage(null)
-    setPageHistory([])
-    setSidebarOpen(false)
-    setView('graph')
-  }
+    setGraphData(record.data);
+    setOriginalGraphData(record.data);
+    setCurrentId(record.id === "__demo__" ? undefined : record.id);
+    setActivePage(null);
+    setPageHistory([]);
+    setSidebarOpen(false);
+    setView("graph");
+  };
 
   // Create a brand-new blank graph (open with default, unsaved)
   const handleCreate = () => {
-    const newData = { title: 'New Graph', nodes: [] }
-    setGraphData(newData)
-    setOriginalGraphData(newData)
-    setCurrentId(undefined)
-    setActivePage(null)
-    setPageHistory([])
-    setSidebarOpen(true)
-    setView('graph')
-  }
+    const newData = { title: "New Graph", nodes: [] };
+    setGraphData(newData);
+    setOriginalGraphData(newData);
+    setCurrentId(undefined);
+    setActivePage(null);
+    setPageHistory([]);
+    setSidebarOpen(true);
+    setView("graph");
+  };
 
   // Save current graph to library
   const handleSave = () => {
-    let dataToSave = graphData
+    let dataToSave = graphData;
     if (graphRef.current) {
-      dataToSave = graphRef.current.getFreshData()
+      dataToSave = graphRef.current.getFreshData();
     }
-    const id = saveGraph(dataToSave, currentId)
-    setCurrentId(id)
-  }
+    const id = saveGraph(dataToSave, currentId);
+    setCurrentId(id);
+  };
 
   // When AI data generates a new graph — also auto-save it
   const handleGraphChange = (data: GraphData) => {
-    setGraphData(data)
-    setOriginalGraphData(data)
+    setGraphData(data);
+    setOriginalGraphData(data);
     // auto-save whenever graph data is replaced via paste
-    if (sessionStorage.getItem('autoSave') !== 'false') {
-      const id = saveGraph(data, currentId)
-      setCurrentId(id)
+    if (sessionStorage.getItem("autoSave") !== "false") {
+      const id = saveGraph(data, currentId);
+      setCurrentId(id);
     }
-  }
+  };
 
   // Handle direct node updates from PageView or Double-Click inline editing
   const handleNodeUpdate = (updatedNode: NodeData) => {
-    let currentData = graphData
+    let currentData = graphData;
     if (graphRef.current) {
-      currentData = graphRef.current.getFreshData()
+      currentData = graphRef.current.getFreshData();
     }
-    const newNodes = currentData.nodes.map(n => n.id === updatedNode.id ? updatedNode : n)
-    const newData = { ...currentData, nodes: newNodes }
-    setGraphData(newData)
+    const newNodes = currentData.nodes.map((n) =>
+      n.id === updatedNode.id ? updatedNode : n,
+    );
+    const newData = { ...currentData, nodes: newNodes };
+    setGraphData(newData);
     // Optional: save on every keystroke/blur might be heavy, but autosaving keeps it fresh:
-    if (sessionStorage.getItem('autoSave') !== 'false') {
-      const id = saveGraph(newData, currentId)
-      setCurrentId(id)
+    if (sessionStorage.getItem("autoSave") !== "false") {
+      const id = saveGraph(newData, currentId);
+      setCurrentId(id);
     }
-    setActivePage(updatedNode)
-    
+    setActivePage(updatedNode);
+
     // Also update history if the active node is in there
-    setPageHistory(prev => prev.map(p => p.id === updatedNode.id ? updatedNode : p))
-  }
+    setPageHistory((prev) =>
+      prev.map((p) => (p.id === updatedNode.id ? updatedNode : p)),
+    );
+  };
 
   const handleNavigatePage = (node: NodeData) => {
-    if (activePage) setPageHistory(prev => [...prev, activePage])
-    setActivePage(node)
-  }
+    if (activePage) setPageHistory((prev) => [...prev, activePage]);
+    setActivePage(node);
+  };
 
   const handleBackPage = () => {
-    setPageHistory(prev => {
-      const newHistory = [...prev]
-      const last = newHistory.pop()
-      if (last) setActivePage(last)
-      return newHistory
-    })
-  }
+    setPageHistory((prev) => {
+      const newHistory = [...prev];
+      const last = newHistory.pop();
+      if (last) setActivePage(last);
+      return newHistory;
+    });
+  };
 
   const goHome = () => {
     // Auto-save the current graph (with live drag positions) before leaving the view.
     // This ensures that even without an explicit Save click, positions are preserved.
-    if (sessionStorage.getItem('autoSave') !== 'false') {
+    if (sessionStorage.getItem("autoSave") !== "false") {
       if (graphRef.current) {
-        const fresh = graphRef.current.getFreshData()
+        const fresh = graphRef.current.getFreshData();
         if (fresh.nodes.length > 0) {
-          saveGraph(fresh, currentId)
+          saveGraph(fresh, currentId);
         }
       }
     }
-    setActivePage(null)
-    setPageHistory([])
-    setSidebarOpen(false)
-    setView('home')
-  }
+    setActivePage(null);
+    setPageHistory([]);
+    setSidebarOpen(false);
+    setView("home");
+  };
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-bg">
       <AnimatePresence mode="wait">
-        {view === 'home' ? (
+        {view === "home" ? (
           <HomePage
             key="home"
             records={records}
@@ -136,7 +141,7 @@ export default function App() {
             onToggleTheme={toggleTheme}
           />
         ) : (
-          <div key="graph" className="absolute inset-0">
+          <div key="graph" className="absolute inset-0 overflow-hidden">
             {/* Graph area — fills the full container */}
             <div className="relative w-full h-full">
               <Graph3D
@@ -146,30 +151,32 @@ export default function App() {
                 isEditMode={isEditMode}
                 theme={theme}
                 onOpenPage={(node) => {
-                  setPageHistory([]) // clear history when opening directly from 3D space
-                  setActivePage(node)
+                  setPageHistory([]); // clear history when opening directly from 3D space
+                  setActivePage(node);
                 }}
-                onToggleSidebar={() => setSidebarOpen(o => !o)}
+                onToggleSidebar={() => setSidebarOpen((o) => !o)}
                 onToggleTheme={toggleTheme}
-                onToggleEditMode={() => setIsEditMode(o => !o)}
+                onToggleEditMode={() => setIsEditMode((o) => !o)}
                 onGoHome={goHome}
                 onSave={handleSave}
                 onRename={(title: string) => {
-                  setGraphData(d => ({ ...d, title }))
+                  setGraphData((d) => ({ ...d, title }));
                 }}
                 onNodeRename={(id: string, label: string) => {
-                  let currentData = graphData
+                  let currentData = graphData;
                   if (graphRef.current) {
-                    currentData = graphRef.current.getFreshData()
+                    currentData = graphRef.current.getFreshData();
                   }
-                  const newNodes = currentData.nodes.map(n => n.id === id ? { ...n, label } : n)
-                  const newData = { ...currentData, nodes: newNodes }
-                  setGraphData(newData)
-                  if (sessionStorage.getItem('autoSave') !== 'false') {
-                    const newId = saveGraph(newData, currentId)
-                    setCurrentId(newId)
+                  const newNodes = currentData.nodes.map((n) =>
+                    n.id === id ? { ...n, label } : n,
+                  );
+                  const newData = { ...currentData, nodes: newNodes };
+                  setGraphData(newData);
+                  if (sessionStorage.getItem("autoSave") !== "false") {
+                    const newId = saveGraph(newData, currentId);
+                    setCurrentId(newId);
                   }
-                  
+
                   // Also manually call engine's updateNode since Graph3D's load() might take a frame
                   if (graphRef.current) {
                     // Update the active node on the engine directly for continuous feedback if needed
@@ -195,8 +202,13 @@ export default function App() {
                 {activePage && (
                   <PageView
                     node={activePage}
-                    nodeMap={Object.fromEntries(graphData.nodes.map(n => [n.id, n]))}
-                    onClose={() => { setActivePage(null); setPageHistory([]); }}
+                    nodeMap={Object.fromEntries(
+                      graphData.nodes.map((n) => [n.id, n]),
+                    )}
+                    onClose={() => {
+                      setActivePage(null);
+                      setPageHistory([]);
+                    }}
                     onNavigate={handleNavigatePage}
                     onBack={handleBackPage}
                     canGoBack={pageHistory.length > 0}
@@ -210,5 +222,5 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }
