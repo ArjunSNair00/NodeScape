@@ -521,6 +521,7 @@ conflict resolution
 state syncing
 ```
 allows users to build idea worlds together, see what paths each are taking
+- MongoDB for storage in far future
 - Mobile version in React Native
  (Nodescape V3)
 
