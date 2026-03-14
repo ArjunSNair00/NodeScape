@@ -506,6 +506,9 @@ eg:-
       |            |          |
      node     Relationship   node   
 ```
+- Encapsulation of nodes (universe inside another universe)
+- branches (parallel universe)
+- clustering (implement a tag system)
 
 ---
 
