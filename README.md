@@ -531,6 +531,13 @@ Graph expansion
 Document → graph
 Automatic concept suggestions
 ```
+```
+Saved Graphs
+= final result
+
+AI Generation History
+= how the result was created
+```
 - Mobile version in React Native
  (Nodescape V3)
 
