@@ -493,6 +493,22 @@ Nodes can dynamically generate:
 
 ---
 
+### Other
+
+- Snapshots for graphs (Sub-Library for internal states of graphs, tracks changes, progress of users)
+- Arrow marks for showing directions between nodes
+- New object: Relationships (Shows how a node connects to another node, 
+eg:-
+```
+(Human body) -> | has | -> (heart)
+      ^            ^          ^
+      |            |          |
+      |            |          |
+     node     Relationship   node   
+```
+
+---
+
 # 👨‍💻 Built by
 
 **Arjun S Nair**
