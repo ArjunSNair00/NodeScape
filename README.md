@@ -540,7 +540,7 @@ AI Generation History
 ```
 - Mobile version in React Native
  (Nodescape V3)
-
+- Mini-Map for navigation (useful for mobile)
 ---
 
 The primary focus are anything that improves the core mechanism: understanding, navigation
