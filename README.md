@@ -523,6 +523,7 @@ state syncing
 allows users to build idea worlds together, see what paths each are taking
 - Neo4j or ArangoDB database for storage in far future
 - Django api server for ai features
+- AI graph history (previously generated graphs, chat history) using supabase
 - Mobile version in React Native
  (Nodescape V3)
 
