@@ -2654,14 +2654,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
         {/* Marquee Select Dropdown */}
-        <div className="relative">
+        <div className="relative flex items-center">
+          {/* Main toggle button */}
           <button
             onClick={() => {
-              setMarqueeMenuOpen((m) => !m);
+              setMarqueeMode((m) => (m === "none" ? "rect" : "none"));
+              if (marqueeMode !== "none") selectedNodeIdsRef.current.clear();
               setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null });
             }}
-            title={`Marquee Tool: ${marqueeMode.toUpperCase()}`}
-            className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            title={`Marquee Tool: ${marqueeMode === "none" ? "OFF" : marqueeMode.toUpperCase()}`}
+            className={`flex items-center justify-center w-8 h-8 rounded-l-md border-y border-l transition-all duration-200 backdrop-blur-md ${
               marqueeMode !== "none"
                 ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
                 : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
@@ -2679,6 +2681,32 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             </svg>
           </button>
 
+          {/* Dropdown arrow button */}
+          <button
+            onClick={() => {
+              setMarqueeMenuOpen((m) => !m);
+              setContextMenu({ visible: false, x: 0, y: 0, hitNodeId: null });
+            }}
+            title="Select marquee mode"
+            className={`flex items-center justify-center w-4 h-8 rounded-r-md border-y border-r transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== "none"
+                ? "border-accent text-accent bg-accent/20"
+                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg
+              className="w-2.5 h-2.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
           <AnimatePresence>
             {marqueeMenuOpen && (
               <motion.div
@@ -2693,22 +2721,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                 }}
               >
                 <div className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-muted2 font-bold mb-1 border-b border-border/40">
-                  Select Tool
+                  Marquee Mode
                 </div>
                 {[
                   { id: "rect", label: "Rectangular" },
                   { id: "freehand", label: "Freehand" },
-                  { id: "none", label: "Off" },
                 ].map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => {
                       setMarqueeMode(opt.id as MarqueeMode);
                       setMarqueeMenuOpen(false);
-                      // Clear selection if turning off
-                      if (opt.id === "none") {
-                        selectedNodeIdsRef.current.clear();
-                      }
                     }}
                     className={`w-full px-4 py-2 text-left text-[11px] font-medium tracking-wide flex items-center justify-between hover:bg-accent/10 transition-colors ${marqueeMode === opt.id ? "text-accent" : "text-text"}`}
                   >
@@ -2732,7 +2755,6 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             )}
           </AnimatePresence>
         </div>
-
         {/* Manual Graph Mode toggle */}
         <button
           onClick={() => {
