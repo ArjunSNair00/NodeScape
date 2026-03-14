@@ -1,7 +1,4 @@
-<p align="center" style="font-size: 3rem; font-weight: bold;">
-  🌌 NodeScape
-</p>
-
+<h1 align="center">🌌 NodeScape</h1>
 <p align="center">
   <i>"Explore knowledge like a galaxy."</i>
 </p>
@@ -15,15 +12,11 @@
 
 <p align="center">
   <strong>NodeScape</strong> — Explore knowledge as a living map. <br/>
-  An interactive AI-powered knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D universe.
+  An interactive AI-powered knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
 </p>
 
 <p align="center">
   <img src="screenshots&demos/graph1.png" width="800" />
-</p>
-
-<p align="center">
-  <img src="screenshots&demos/graph.gif" width="800"/>
 </p>
 
 ---
@@ -37,7 +30,7 @@ NodeScape includes a **visual homepage** that acts as a personal graph library.
 Graphs are stored locally in your browser using **local storage**, making NodeScape an **offline-first knowledge workspace**.
 
 <p align="center">
-  <img src="screenshots&demos/homepage.png" width="800" />
+  <img src="screenshots&demos/homepage2.png" width="800" />
 </p>
 
 You can:
@@ -59,6 +52,10 @@ NodeScape supports both:
 - **2D structured layout**
 
 This allows users to explore concepts spatially or in a structured hierarchy.
+
+<p align="center">
+  <img src="screenshots&demos/graph.gif" width="600"/>
+</p>
 
 ### Desktop Controls
 
@@ -123,6 +120,10 @@ The hierarchy system works with both **2D and 3D modes**, helping reveal relatio
 - concepts
 - techniques
 - applications
+ 
+<p align="center">
+  <img src="screenshots&demos/hierarchy.png" width="700" />
+</p>
 
 ---
 
@@ -138,6 +139,10 @@ This mode:
 
 Users can switch freely between **2D and 3D views**.
 
+<p align="center">
+  <img src="screenshots&demos/2dmode.png" width="500" />
+</p>
+
 ---
 
 # 📄 Node Pages (Concept Notes)
@@ -149,9 +154,11 @@ Each node functions like a **knowledge card** containing:
 - formatted notes
 - contextual information
 - links to related nodes
+- Breadcrumb navigation (browser-style navigation) for nodes
+- Address bar
 
 <p align="center">
-  <img src="screenshots&demos/note.png" width="800" />
+  <img src="screenshots&demos/note2.png" width="800" />
 </p>
 
 This creates a hybrid system between:
