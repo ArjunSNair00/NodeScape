@@ -495,7 +495,7 @@ Nodes can dynamically generate:
 
 ### Other
 
-- Snapshots for graphs (Sub-Library for internal states of graphs, tracks changes, progress of users)
+- Snapshots for graphs (Sub-Library for internal states of graphs, tracks changes, progress of users) 
 - Arrow marks for showing directions between nodes
 - New object: Relationships (Shows how a node connects to another node huge change, for NodeScape V2
 eg:-
@@ -521,7 +521,8 @@ conflict resolution
 state syncing
 ```
 allows users to build idea worlds together, see what paths each are taking
-- MongoDB for storage in far future
+- MongoDB / Graph database for storage in far future
+- Custom api server for ai features in Django
 - Mobile version in React Native
  (Nodescape V3)
 
