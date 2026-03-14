@@ -209,9 +209,12 @@ function ControlsTab({
   const [labelLevel, setLabelLevel] = useState(() =>
     Number(sessionStorage.getItem("labelLevel") || 5),
   ); // 1–9, 5 = default (×1.0)
-  const [drawLevel, setDrawLevel] = useState(() =>
-    Number(sessionStorage.getItem("drawLevel") || 5),
-  ); // 1-9, 5 = default
+  const [drawLevel, setDrawLevel] = useState(() => {
+    const saved = sessionStorage.getItem("drawLevel");
+    // If never set, or set to the old default of 5, use the new default of 9
+    if (!saved || saved === "5") return 9;
+    return Number(saved);
+  }); // 1-9, 9 = max default
   const [idleRotate, setIdleRotate] = useState(
     () => sessionStorage.getItem("idleRotate") !== "false",
   );

@@ -24,6 +24,28 @@ export default function App() {
   const [pageHistory, setPageHistory] = useState<NodeData[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isSplitMode, setIsSplitMode] = useState(false);
+  const [splitWidth, setSplitWidth] = useState(50); // percentage
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleSplitMouseMove = (e: MouseEvent) => {
+    if (!splitContainerRef.current) return;
+    const rect = splitContainerRef.current.getBoundingClientRect();
+    const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+    setSplitWidth(Math.max(20, Math.min(80, newWidth)));
+  };
+
+  const handleSplitMouseUp = () => {
+    window.removeEventListener("mousemove", handleSplitMouseMove);
+    window.removeEventListener("mouseup", handleSplitMouseUp);
+    document.body.style.cursor = "default";
+  };
+
+  const startResizing = () => {
+    window.addEventListener("mousemove", handleSplitMouseMove);
+    window.addEventListener("mouseup", handleSplitMouseUp);
+    document.body.style.cursor = "col-resize";
+  };
 
   const graphRef = useRef<GraphHandle>(null);
 
@@ -143,63 +165,12 @@ export default function App() {
         ) : (
           <div key="graph" className="absolute inset-0 overflow-hidden">
             {/* Graph area — fills the full container */}
-            <div className="relative w-full h-full">
-              <Graph3D
-                ref={graphRef}
-                graphData={graphData}
-                sidebarOpen={sidebarOpen}
-                isEditMode={isEditMode}
-                theme={theme}
-                onOpenPage={(node) => {
-                  setPageHistory([]); // clear history when opening directly from 3D space
-                  setActivePage(node);
-                }}
-                onToggleSidebar={() => setSidebarOpen((o) => !o)}
-                onToggleTheme={toggleTheme}
-                onToggleEditMode={() => setIsEditMode((o) => !o)}
-                onGoHome={goHome}
-                onSave={handleSave}
-                onRename={(title: string) => {
-                  setGraphData((d) => ({ ...d, title }));
-                }}
-                onNodeRename={(id: string, label: string) => {
-                  let currentData = graphData;
-                  if (graphRef.current) {
-                    currentData = graphRef.current.getFreshData();
-                  }
-                  const newNodes = currentData.nodes.map((n) =>
-                    n.id === id ? { ...n, label } : n,
-                  );
-                  const newData = { ...currentData, nodes: newNodes };
-                  setGraphData(newData);
-                  if (sessionStorage.getItem("autoSave") !== "false") {
-                    const newId = saveGraph(newData, currentId);
-                    setCurrentId(newId);
-                  }
-
-                  // Also manually call engine's updateNode since Graph3D's load() might take a frame
-                  if (graphRef.current) {
-                    // Update the active node on the engine directly for continuous feedback if needed
-                    // (The useEffect in Graph3D will trigger a rebuild anyway, but this is safe)
-                  }
-                }}
-              />
-
-              {/* Sidebar — overlays the graph, no longer a flex sibling that resizes the canvas */}
-              <Sidebar
-                open={sidebarOpen}
-                graphData={graphData}
-                originalGraphData={originalGraphData}
-                graphRef={graphRef}
-                onClose={() => setSidebarOpen(false)}
-                onGraphChange={handleGraphChange}
-                onSave={handleSave}
-                onGoHome={goHome}
-              />
-
-              {/* Page view overlay */}
-              <AnimatePresence>
-                {activePage && (
+            <div ref={splitContainerRef} className="relative w-full h-full flex overflow-hidden">
+              {isSplitMode && activePage && (
+                <div 
+                  style={{ width: `${splitWidth}%` }}
+                  className="relative h-full border-r border-border shrink-0 z-30"
+                >
                   <PageView
                     node={activePage}
                     nodeMap={Object.fromEntries(
@@ -215,8 +186,86 @@ export default function App() {
                     isEditMode={isEditMode}
                     onUpdateNode={handleNodeUpdate}
                   />
-                )}
-              </AnimatePresence>
+                  <div 
+                    onMouseDown={startResizing}
+                    className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-50 group pointer-events-auto"
+                  >
+                    <div className="w-px h-full bg-transparent group-hover:bg-accent/40 mx-auto transition-colors" />
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex-1 h-full relative min-w-0">
+                <Graph3D
+                  ref={graphRef}
+                  graphData={graphData}
+                  sidebarOpen={sidebarOpen}
+                  isEditMode={isEditMode}
+                  theme={theme}
+                  onOpenPage={(node) => {
+                    setPageHistory([]); // clear history when opening directly from 3D space
+                    setActivePage(node);
+                  }}
+                  onToggleSidebar={() => setSidebarOpen((o) => !o)}
+                  onToggleTheme={toggleTheme}
+                  onToggleEditMode={() => setIsEditMode((o) => !o)}
+                  isSplitMode={isSplitMode}
+                  onToggleSplitMode={() => setIsSplitMode(!isSplitMode)}
+                  onGoHome={goHome}
+                  onSave={handleSave}
+                  onRename={(title: string) => {
+                    setGraphData((d) => ({ ...d, title }));
+                  }}
+                  onNodeRename={(id: string, label: string) => {
+                    let currentData = graphData;
+                    if (graphRef.current) {
+                      currentData = graphRef.current.getFreshData();
+                    }
+                    const newNodes = currentData.nodes.map((n) =>
+                      n.id === id ? { ...n, label } : n,
+                    );
+                    const newData = { ...currentData, nodes: newNodes };
+                    setGraphData(newData);
+                    if (sessionStorage.getItem("autoSave") !== "false") {
+                      const newId = saveGraph(newData, currentId);
+                      setCurrentId(newId);
+                    }
+                  }}
+                />
+
+                {/* Sidebar — overlays the graph */}
+                <Sidebar
+                  open={sidebarOpen}
+                  graphData={graphData}
+                  originalGraphData={originalGraphData}
+                  graphRef={graphRef}
+                  onClose={() => setSidebarOpen(false)}
+                  onGraphChange={handleGraphChange}
+                  onSave={handleSave}
+                  onGoHome={goHome}
+                />
+
+                {/* Page view overlay (Non-Split Mode) */}
+                <AnimatePresence>
+                  {!isSplitMode && activePage && (
+                    <PageView
+                      node={activePage}
+                      nodeMap={Object.fromEntries(
+                        graphData.nodes.map((n) => [n.id, n]),
+                      )}
+                      onClose={() => {
+                        setActivePage(null);
+                        setPageHistory([]);
+                      }}
+                      onNavigate={handleNavigatePage}
+                      onBack={handleBackPage}
+                      canGoBack={pageHistory.length > 0}
+                      isEditMode={isEditMode}
+                      onUpdateNode={handleNodeUpdate}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         )}

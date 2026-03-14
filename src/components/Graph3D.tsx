@@ -47,6 +47,8 @@ interface Props {
   onSave: () => void;
   onRename?: (title: string) => void;
   onNodeRename?: (id: string, label: string) => void;
+  isSplitMode?: boolean;
+  onToggleSplitMode?: () => void;
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -166,6 +168,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     onSave,
     onRename,
     onNodeRename,
+    isSplitMode = false,
+    onToggleSplitMode,
   },
   ref,
 ) {
@@ -788,7 +792,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    const initialDrawLevel = Number(sessionStorage.getItem("drawLevel") || 9);
+    const savedDraw = sessionStorage.getItem("drawLevel");
+    const initialDrawLevel = (!savedDraw || savedDraw === "5") ? 9 : Number(savedDraw);
     const initialDensity = 0.003 - ((initialDrawLevel - 1) / 8) * 0.003;
     const fog = new THREE.FogExp2(themeFogColor(theme), initialDensity);
     scene.fog = fog;
@@ -2728,6 +2733,30 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
+        {/* Split Mode Toggle */}
+        <button
+          onClick={onToggleSplitMode}
+          title={isSplitMode ? "Disable Split Screen" : "Enable Split Screen"}
+          className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            isSplitMode
+              ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+              : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+          }`}
+        >
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="12" y1="3" x2="12" y2="21" />
+          </svg>
+        </button>
+
         {/* Marquee Select Dropdown */}
         <div className="relative flex items-center">
           {/* Main toggle button */}
