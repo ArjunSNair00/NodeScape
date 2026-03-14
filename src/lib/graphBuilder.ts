@@ -272,10 +272,27 @@ export function setHoveredNode(
   return hit
 }
 
+/** Check if edge (source,target) is consecutive in path (primary path) */
+function isPrimaryPathEdge(
+  sourceId: string,
+  targetId: string,
+  path: string[]
+): boolean {
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    if ((a === sourceId && b === targetId) || (a === targetId && b === sourceId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function setHighlighted(
   highlightedIds: Set<string>,
   nodeObjs: NodeObj[],
-  linkObjs: LinkObj[]
+  linkObjs: LinkObj[],
+  highlightPath: string[] = []
 ) {
   const isAnyHighlighted = highlightedIds.size > 0
 
@@ -290,7 +307,7 @@ export function setHighlighted(
     }
 
     const isHov = highlightedIds.has(o.node.id)
-    const isConn = Array.from(highlightedIds).some(hid => 
+    const isConn = Array.from(highlightedIds).some(hid =>
       o.node.connections.includes(hid)
     )
 
@@ -311,9 +328,16 @@ export function setHighlighted(
     const tH = highlightedIds.has(lo.target.id)
 
     if (sH && tH) {
-      // Line between two highlighted nodes -> solid bold
-      lo.line.material = lo.mat
-      lo.mat.opacity = 1
+      const isPrimary = isPrimaryPathEdge(lo.source.id, lo.target.id, highlightPath)
+      if (isPrimary) {
+        lo.line.material = lo.mat
+        lo.mat.opacity = 1
+      } else {
+        if (lo.dashedMat) {
+          lo.line.material = lo.dashedMat
+          lo.dashedMat.opacity = 0.7
+        }
+      }
     } else if (sH || tH) {
       // Connection to highlighted node -> dotted
       if (lo.dashedMat) {
@@ -321,11 +345,106 @@ export function setHighlighted(
         lo.dashedMat.opacity = 0.7
       }
     } else {
-      // Irrelevant line -> very transparent
       lo.line.material = lo.mat
       lo.mat.opacity = 0.04
     }
   })
+}
+
+/** Combine path highlight with hover: path as base, hover overlaid. When no path, delegates to setHoveredNode. */
+export function setHighlightedWithHover(
+  highlightedIds: Set<string>,
+  highlightPath: string[],
+  hoverHit: NodeObj | LinkObj | null,
+  hovObj: NodeObj | LinkObj | null,
+  nodeObjs: NodeObj[],
+  linkObjs: LinkObj[]
+): NodeObj | LinkObj | null {
+  if (highlightedIds.size === 0) {
+    return setHoveredNode(hoverHit, hovObj, nodeObjs, linkObjs)
+  }
+
+  // Apply path highlight as base, overlay hover emphasis
+  nodeObjs.forEach(o => {
+    const spr = o.node._sprMat
+    const isHov = highlightedIds.has(o.node.id)
+    const isConn = Array.from(highlightedIds).some(hid =>
+      o.node.connections.includes(hid)
+    )
+    let emissive = isHov ? 1.4 : isConn ? 0.8 : 0.15
+    let opacity = isHov ? 1 : isConn ? 0.85 : 0.12
+    let glowOpacity = isHov ? 0.28 : isConn ? 0.081 : 0.005
+    let sprOpacity = isHov ? 1 : isConn ? 0.8 : 0.15
+
+    if (hoverHit && 'node' in hoverHit) {
+      const isHoverSelf = o.node.id === hoverHit.node.id
+      const isHoverConn = hoverHit.node.connections.includes(o.node.id) || o.node.connections.includes(hoverHit.node.id)
+      if (isHoverSelf) {
+        emissive = 1.4
+        opacity = 1
+        glowOpacity = 0.25
+        if (spr) sprOpacity = 1
+      } else if (isHoverConn) {
+        emissive = Math.max(emissive, 0.85)
+        opacity = Math.max(opacity, 0.92)
+        glowOpacity = Math.max(glowOpacity, 0.1)
+        if (spr) sprOpacity = Math.max(sprOpacity, 0.9)
+      }
+    } else if (hoverHit && 'source' in hoverHit) {
+      const isHoverEndpoint = o.node.id === hoverHit.source.id || o.node.id === hoverHit.target.id
+      if (isHoverEndpoint) {
+        emissive = Math.max(emissive, 1.2)
+        opacity = Math.max(opacity, 1)
+        glowOpacity = Math.max(glowOpacity, 0.2)
+        if (spr) sprOpacity = 1
+      }
+    }
+
+    o.mat.emissiveIntensity = emissive
+    o.mat.opacity = opacity
+    o.glowMat.opacity = glowOpacity
+    if (spr) spr.opacity = sprOpacity
+  })
+
+  linkObjs.forEach(lo => {
+    const sH = highlightedIds.has(lo.source.id)
+    const tH = highlightedIds.has(lo.target.id)
+    const isPrimary = (sH && tH) && isPrimaryPathEdge(lo.source.id, lo.target.id, highlightPath)
+
+    if (sH && tH) {
+      if (isPrimary) {
+        lo.line.material = lo.mat
+        lo.mat.opacity = 1
+      } else if (lo.dashedMat) {
+        lo.line.material = lo.dashedMat
+        lo.dashedMat.opacity = 0.7
+      }
+    } else if (sH || tH) {
+      if (lo.dashedMat) {
+        lo.line.material = lo.dashedMat
+        lo.dashedMat.opacity = 0.7
+      }
+    } else {
+      lo.line.material = lo.mat
+      lo.mat.opacity = 0.04
+    }
+
+    if (hoverHit && 'source' in hoverHit) {
+      const isHoveredLink = lo === hoverHit
+      if (isHoveredLink) {
+        lo.line.material = lo.mat
+        lo.mat.opacity = 1
+      }
+    } else if (hoverHit && 'node' in hoverHit) {
+      const connToHover = lo.source.id === hoverHit.node.id || lo.target.id === hoverHit.node.id
+      if (connToHover && lo.dashedMat) {
+        lo.line.material = lo.dashedMat
+        lo.dashedMat.opacity = 0.85
+      }
+    }
+  })
+
+  return hoverHit
 }
 
 export function applyCam(camera: THREE.PerspectiveCamera, spherical: Spherical, panOffset: THREE.Vector3) {

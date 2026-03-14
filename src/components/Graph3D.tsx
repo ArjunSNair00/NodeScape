@@ -27,6 +27,7 @@ import {
   syncPositions,
   setHoveredNode,
   setHighlighted,
+  setHighlightedWithHover,
   applyCam,
   buildLabelSprite,
   hexToInt,
@@ -40,7 +41,7 @@ interface Props {
   sidebarOpen: boolean;
   isEditMode: boolean;
   theme: Theme;
-  onOpenPage: (node: import("../types/graph").NodeData) => void;
+  onNodeSelect: (nodeId: string) => void;
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
   onToggleEditMode: () => void;
@@ -52,9 +53,11 @@ interface Props {
   onToggleSplitMode?: () => void;
   uiAnimations?: boolean;
   onToggleUiAnimations?: () => void;
-  isHighlightMode?: boolean;
-  highlightedNodes?: Set<string>;
-  onNodeClick?: (id: string) => void;
+  isPathMode?: boolean;
+  highlightSet?: Set<string>;
+  highlightPath?: string[];
+  onLockChange?: (nodeId: string | null) => void;
+  activeNodeId?: string | null;
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -166,7 +169,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     sidebarOpen,
     isEditMode,
     theme,
-    onOpenPage,
+    onNodeSelect,
     onToggleSidebar,
     onToggleEditMode,
     onToggleTheme,
@@ -178,9 +181,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     onToggleSplitMode,
     uiAnimations = true,
     onToggleUiAnimations,
-    isHighlightMode = false,
-    highlightedNodes = new Set(),
-    onNodeClick,
+    isPathMode = false,
+    highlightSet = new Set(),
+    highlightPath = [],
+    onLockChange,
+    activeNodeId = null,
   },
   ref,
 ) {
@@ -217,6 +222,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
   const plusRef = useRef<HTMLDivElement>(null); // '+' badge for manual mode
   const previewNodeIdRef = useRef<string | null>(null); // which node is currently shown in the preview
   const mouseOverPreviewRef = useRef(false); // true while cursor is inside the preview div
+  const activeNodeIdRef = useRef<string | null>(null);
   const hidePreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -804,7 +810,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
     const scene = new THREE.Scene();
     const savedDraw = sessionStorage.getItem("drawLevel");
-    const initialDrawLevel = (!savedDraw || savedDraw === "5") ? 9 : Number(savedDraw);
+    const initialDrawLevel =
+      !savedDraw || savedDraw === "5" ? 9 : Number(savedDraw);
     const initialDensity = 0.003 - ((initialDrawLevel - 1) / 8) * 0.003;
     const fog = new THREE.FogExp2(themeFogColor(theme), initialDensity);
     scene.fog = fog;
@@ -843,35 +850,42 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       // ── apply held arrow keys each frame ──────────────────────────────────
       const held = heldKeysRef.current;
       if (held.size > 0 && cameraRef.current) {
-        const step = sph().radius * 0.006;
+        const radius = sph().radius;
+
+        const baseDistance = 300; // tuning constant
+        const step = (baseDistance / radius) * 20;
+
         const rotStep = 0.022;
 
         if (held.has("ArrowLeft")) {
           if (held.has("Shift")) {
             sph().theta += rotStep;
           } else {
-            doPan(step * 80, 0);
+            doPan(step, 0);
           }
         }
+
         if (held.has("ArrowRight")) {
           if (held.has("Shift")) {
             sph().theta -= rotStep;
           } else {
-            doPan(-step * 80, 0);
+            doPan(-step, 0);
           }
         }
+
         if (held.has("ArrowUp")) {
           if (held.has("Shift")) {
             sph().phi = Math.max(0.1, sph().phi - rotStep);
           } else {
-            doPan(0, -step * 80);
+            doPan(0, step); // reversed
           }
         }
+
         if (held.has("ArrowDown")) {
           if (held.has("Shift")) {
             sph().phi = Math.min(Math.PI - 0.1, sph().phi + rotStep);
           } else {
-            doPan(0, step * 80);
+            doPan(0, -step); // reversed
           }
         }
       }
@@ -919,11 +933,18 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         const isHoveredNode =
           hoverIsNode && o.node.id === (hovObjRef.current as NodeObj).node.id;
         const isSelected = selectedNodeIdsRef.current.has(o.node.id);
+        const isActiveNode = activeNodeIdRef.current === o.node.id;
 
-        if (isSelected) {
+        if (isActiveNode) {
+          o.glowMat.opacity = 0.7 + 0.35 * Math.sin(tRef.current * 3.0);
+          o.glowMat.color.setHex(0x7c6af7);
+          o.mesh.scale.setScalar((o.animScale ?? 1) * 1.12);
+        } else if (isSelected) {
           o.glowMat.opacity = 0.5 + 0.2 * Math.sin(tRef.current * 4.0);
           o.glowMat.color.setHex(0x7c6af7); // Accent color override
+          o.mesh.scale.setScalar(o.animScale ?? 1);
         } else if (!isHoveredNode) {
+          o.mesh.scale.setScalar(o.animScale ?? 1);
           const p = 1 + 0.18 * Math.sin(tRef.current * 1.6 + i * 0.9);
           let base = 0.055;
 
@@ -943,6 +964,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
           o.glowMat.opacity = base * p;
           o.glowMat.color.set(o.mat.color); // Restore original color if it was selected previously
+          o.mesh.scale.setScalar(o.animScale ?? 1);
+        } else {
+          o.mesh.scale.setScalar(o.animScale ?? 1);
         }
       });
 
@@ -1216,16 +1240,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           const node = hit.node;
 
           if (lockedNodeIdRef.current === node.id) {
-            // Clicking same node again → unlock
             lockedNodeIdRef.current = null;
+            onLockChange?.(null);
           } else {
-            // Lock camera to node
             lockedNodeIdRef.current = node.id;
             panTargetRef.current.set(node.x, node.y, node.z);
+            onLockChange?.(node.id);
           }
         } else {
-          // Middle click empty space → unlock
           lockedNodeIdRef.current = null;
+          onLockChange?.(null);
         }
 
         return; // IMPORTANT: prevents drag/marquee logic from triggering
@@ -1551,12 +1575,23 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           if (hoveredNode) hit = hoveredNode;
         }
 
-        hovObjRef.current = setHoveredNode(
-          hit,
-          hovObjRef.current,
-          nodeObjsRef.current,
-          linkObjsRef.current,
-        );
+        if (isPathMode && highlightSet.size > 0) {
+          hovObjRef.current = setHighlightedWithHover(
+            highlightSet,
+            highlightPath,
+            hit,
+            hovObjRef.current,
+            nodeObjsRef.current,
+            linkObjsRef.current,
+          );
+        } else {
+          hovObjRef.current = setHoveredNode(
+            hit,
+            hovObjRef.current,
+            nodeObjsRef.current,
+            linkObjsRef.current,
+          );
+        }
 
         canvas.style.cursor = hit
           ? "grab"
@@ -1814,10 +1849,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               const hit = getHit(e.clientX, e.clientY);
 
               if (hit && "node" in hit) {
-                onOpenPage(hit.node);
-                if (isHighlightMode && onNodeClick) {
-                  onNodeClick(hit.node.id);
-                }
+                onNodeSelect(hit.node.id);
               }
             }
           }
@@ -1879,16 +1911,42 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [doApplyCam, doPan, getHit, kickIdle, onOpenPage, showTooltip, isHighlightMode, onNodeClick]);
+  }, [
+    doApplyCam,
+    doPan,
+    getHit,
+    kickIdle,
+    onNodeSelect,
+    showTooltip,
+    onLockChange,
+  ]);
 
-  // Sync Highlight Mode visuals
   useEffect(() => {
-    if (isHighlightMode) {
-      setHighlighted(highlightedNodes, nodeObjsRef.current, linkObjsRef.current);
+    activeNodeIdRef.current = activeNodeId ?? null;
+  }, [activeNodeId]);
+
+  // Sync Path Mode visuals: use combined function so path + current hover stay in sync
+  useEffect(() => {
+    if (isPathMode && highlightSet.size > 0) {
+      setHighlightedWithHover(
+        highlightSet,
+        highlightPath,
+        hovObjRef.current,
+        hovObjRef.current,
+        nodeObjsRef.current,
+        linkObjsRef.current,
+      );
+    } else if (!isPathMode) {
+      setHighlighted(new Set(), nodeObjsRef.current, linkObjsRef.current, []);
     } else {
-      setHighlighted(new Set(), nodeObjsRef.current, linkObjsRef.current);
+      setHighlighted(
+        highlightSet,
+        nodeObjsRef.current,
+        linkObjsRef.current,
+        highlightPath,
+      );
     }
-  }, [highlightedNodes, isHighlightMode]);
+  }, [highlightSet, highlightPath, isPathMode]);
 
   // ── touch events ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2042,10 +2100,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         const touch = e.changedTouches[0];
         const hit = getHit(touch.clientX, touch.clientY);
         if (hit && "node" in hit) {
-          onOpenPage(hit.node);
-          if (isHighlightMode && onNodeClick) {
-            onNodeClick(hit.node.id);
-          }
+          onNodeSelect(hit.node.id);
         }
       }
       draggedNodeRef.current = null;
@@ -2072,7 +2127,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       canvas.removeEventListener("touchend", onTouchEnd);
       canvas.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [doApplyCam, doPan, getHit, kickIdle, onOpenPage]);
+  }, [doApplyCam, doPan, getHit, kickIdle, onNodeSelect]);
 
   // ── D-pad action handler ──────────────────────────────────────────────────────
   const handleDPadAction = useCallback(
@@ -2239,6 +2294,26 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         return lockCameraEnabledRef.current;
       },
 
+      focusToNode(nodeId: string) {
+        const n = simNodesRef.current.find((nd) => nd.id === nodeId);
+        if (n) {
+          panTargetRef.current.set(n.x, n.y, n.z);
+        }
+      },
+
+      lockToNode(nodeId: string) {
+        lockCameraEnabledRef.current = true;
+        const n = simNodesRef.current.find((nd) => nd.id === nodeId);
+        if (n) {
+          lockedNodeIdRef.current = nodeId;
+          panTargetRef.current.set(n.x, n.y, n.z);
+        }
+      },
+
+      unlockCamera() {
+        lockedNodeIdRef.current = null;
+      },
+
       appendNodes(data) {
         engineRef.current?.appendNodes(data);
       },
@@ -2374,13 +2449,14 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             <button
               key={n.id}
               onClick={() => {
-                onOpenPage(n);
-                if (isHighlightMode && onNodeClick) {
-                  onNodeClick(n.id);
-                }
+                onNodeSelect(n.id);
                 setLeftSidebarOpen(false);
               }}
-              className="w-full text-left px-3 py-2 text-xs text-muted hover:text-text hover:bg-surface2 rounded transition-colors truncate flex items-center gap-2"
+              className={`w-full text-left px-3 py-2 text-xs rounded transition-colors truncate flex items-center gap-2 ${
+                activeNodeId === n.id
+                  ? "text-accent bg-accent/15 border-l-2 border-accent -ml-px pl-[11px] font-medium"
+                  : "text-muted hover:text-text hover:bg-surface2"
+              }`}
             >
               <span>{n.icon}</span>
               <span>{n.label}</span>
@@ -3003,7 +3079,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         </button>
         <button
           onClick={onToggleEditMode}
-          title={isEditMode ? "View Mode" : "Edit Mode"}
+          title={
+            isEditMode ? "View Node Content Mode" : "Edit Node Content Mode"
+          }
           className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md
             ${
               isEditMode

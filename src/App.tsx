@@ -27,14 +27,18 @@ export default function App() {
   const [uiAnimations, setUiAnimations] = useState(
     () => sessionStorage.getItem("uiAnimations") !== "false",
   );
-  const [isSplitMode, setIsSplitMode] = useState(false);
-  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
-  const [isHighlightMode, setIsHighlightMode] = useState(
-    () => sessionStorage.getItem("isHighlightMode") === "true"
+  const [isSplitMode, setIsSplitMode] = useState(
+    () => sessionStorage.getItem("splitMode") === "true"
   );
+  const [highlightPath, setHighlightPath] = useState<string[]>([]);
   const [isPathMode, setIsPathMode] = useState(
     () => sessionStorage.getItem("isPathMode") === "true"
   );
+  const highlightSet = new Set(highlightPath);
+  const [isLockEnabled, setIsLockEnabled] = useState(
+    () => sessionStorage.getItem("lockCamera") !== "false"
+  );
+  const [lockedToNodeId, setLockedToNodeId] = useState<string | null>(null);
   const [splitWidth, setSplitWidth] = useState(50); // percentage
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +70,7 @@ export default function App() {
     setCurrentId(record.id === "__demo__" ? undefined : record.id);
     setActivePage(null);
     setPageHistory([]);
+    setHighlightPath([]);
     setSidebarOpen(false);
     setView("graph");
   };
@@ -78,7 +83,10 @@ export default function App() {
     setCurrentId(undefined);
     setActivePage(null);
     setPageHistory([]);
+    setHighlightPath([]);
     setSidebarOpen(true);
+    setIsSplitMode(true);
+    sessionStorage.setItem("splitMode", "true");
     setView("graph");
   };
 
@@ -103,20 +111,68 @@ export default function App() {
     }
   };
 
-  // Handle node selection/highlighting
-  const handleNodeHighlight = (nodeId: string) => {
-    if (!isHighlightMode) return;
-    
-    setHighlightedNodes((prev) => {
-      const next = new Set(prev);
-      if (isPathMode) {
-        next.add(nodeId);
-      } else {
-        next.clear();
-        next.add(nodeId);
-      }
-      return next;
+  /** Single centralized node selection — used by graph, PageView, Index, breadcrumb */
+  const handleNodeSelect = (nodeId: string) => {
+    const node = graphData.nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    // 1. Update PageView / active page
+    setActivePage(node);
+
+    // 2. Update breadcrumb history (trim if node already in path)
+    setPageHistory((prev) => {
+      const existingIndex = prev.findIndex((p) => p.id === nodeId);
+      if (existingIndex !== -1) return prev.slice(0, existingIndex);
+      if (activePage && activePage.id === nodeId) return prev;
+      if (activePage) return [...prev, activePage];
+      return prev;
     });
+
+    // 3. Update path/highlight when Path Mode is on (immutable updates)
+    if (isPathMode) {
+      setHighlightPath((prev) => {
+        const idx = prev.indexOf(nodeId);
+        if (idx !== -1) return prev.slice(0, idx + 1);
+        return [...prev, nodeId];
+      });
+    }
+
+    // 4. Camera: if lock enabled, follow node; else one-time focus
+    if (isLockEnabled) {
+      setLockedToNodeId(nodeId);
+      graphRef.current?.lockToNode(nodeId);
+    } else {
+      graphRef.current?.focusToNode(nodeId);
+    }
+  };
+
+  const handleClearPath = () => {
+    setHighlightPath([]);
+  };
+
+  const handleTogglePathMode = () => {
+    const next = !isPathMode;
+    setIsPathMode(next);
+    if (next && activePage) {
+      setHighlightPath([...pageHistory.map((p) => p.id), activePage.id]);
+    } else if (!next) {
+      setHighlightPath([]);
+    }
+    sessionStorage.setItem("isPathMode", String(next));
+  };
+
+  const handleLockCamera = (nodeId: string) => {
+    setIsLockEnabled(true);
+    sessionStorage.setItem("lockCamera", "true");
+    setLockedToNodeId(nodeId);
+    graphRef.current?.lockToNode(nodeId);
+  };
+
+  const handleUnlockCamera = () => {
+    setIsLockEnabled(false);
+    sessionStorage.setItem("lockCamera", "false");
+    setLockedToNodeId(null);
+    graphRef.current?.unlockCamera();
   };
 
   // Handle direct node updates from PageView or Double-Click inline editing
@@ -143,22 +199,6 @@ export default function App() {
     );
   };
 
-  const handleNavigatePage = (node: NodeData) => {
-    setPageHistory((prev) => {
-      // If node is already in history, truncate to it
-      const existingIndex = prev.findIndex((p) => p.id === node.id);
-      if (existingIndex !== -1) {
-        return prev.slice(0, existingIndex);
-      }
-      // If it's already the active node, don't change history
-      if (activePage && activePage.id === node.id) return prev;
-      
-      if (activePage) return [...prev, activePage];
-      return prev;
-    });
-    setActivePage(node);
-  };
-
   const handleBackPage = () => {
     setPageHistory((prev) => {
       const newHistory = [...prev];
@@ -169,12 +209,8 @@ export default function App() {
   };
 
   const handleJumpToHistory = (index: number) => {
-    setPageHistory((prev) => {
-      const newHistory = prev.slice(0, index);
-      const target = prev[index];
-      if (target) setActivePage(target);
-      return newHistory;
-    });
+    const target = pageHistory[index];
+    if (target) handleNodeSelect(target.id);
   };
 
   const goHome = () => {
@@ -190,6 +226,9 @@ export default function App() {
     }
     setActivePage(null);
     setPageHistory([]);
+    setHighlightPath([]);
+    setLockedToNodeId(null);
+    graphRef.current?.unlockCamera();
     setSidebarOpen(false);
     setView("home");
   };
@@ -218,7 +257,7 @@ export default function App() {
                   className="relative h-full border-r border-border shrink-0 z-30 bg-bg"
                 >
                   {activePage ? (
-                    <PageView
+                  <PageView
                       node={activePage}
                       nodeMap={Object.fromEntries(
                         graphData.nodes.map((n) => [n.id, n]),
@@ -227,7 +266,7 @@ export default function App() {
                         setActivePage(null);
                         setPageHistory([]);
                       }}
-                      onNavigate={handleNavigatePage}
+                      onNodeSelect={handleNodeSelect}
                       onBack={handleBackPage}
                       canGoBack={pageHistory.length > 0}
                       isEditMode={isEditMode}
@@ -236,8 +275,14 @@ export default function App() {
                       onJump={handleJumpToHistory}
                       graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
-                      isHighlightMode={isHighlightMode}
-                      onHighlightNode={handleNodeHighlight}
+                      isPathMode={isPathMode}
+                      onTogglePathMode={handleTogglePathMode}
+                      highlightPath={highlightPath}
+                      onClearPath={handleClearPath}
+                      isCameraLocked={lockedToNodeId !== null}
+                      lockedToNodeId={lockedToNodeId}
+                      onLockCamera={handleLockCamera}
+                      onUnlockCamera={handleUnlockCamera}
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-in fade-in zoom-in duration-500">
@@ -251,7 +296,7 @@ export default function App() {
                       </div>
                       <h3 className="text-base font-medium text-text mb-3 tracking-tight">No Node Selected</h3>
                       <p className="text-[11px] text-muted leading-relaxed max-w-[280px]">
-                        The graph is waiting. Select any node in the view to reveal its contents in this pane.
+                        Select any node in the graph to reveal its contents here.
                       </p>
                     </div>
                   )}
@@ -271,15 +316,16 @@ export default function App() {
                   sidebarOpen={sidebarOpen}
                   isEditMode={isEditMode}
                   theme={theme}
-                  onOpenPage={(node) => {
-                    setPageHistory([]); // clear history when opening directly from 3D space
-                    setActivePage(node);
-                  }}
+                  onNodeSelect={handleNodeSelect}
                   onToggleSidebar={() => setSidebarOpen((o) => !o)}
                   onToggleTheme={toggleTheme}
                   onToggleEditMode={() => setIsEditMode((o) => !o)}
                   isSplitMode={isSplitMode}
-                  onToggleSplitMode={() => setIsSplitMode(!isSplitMode)}
+                  onToggleSplitMode={() => {
+                    const next = !isSplitMode;
+                    setIsSplitMode(next);
+                    sessionStorage.setItem("splitMode", String(next));
+                  }}
                   uiAnimations={uiAnimations}
                   onToggleUiAnimations={() => {
                     setUiAnimations((p) => {
@@ -308,9 +354,15 @@ export default function App() {
                       setCurrentId(newId);
                     }
                   }}
-                  isHighlightMode={isHighlightMode}
-                  highlightedNodes={highlightedNodes}
-                  onNodeClick={handleNodeHighlight}
+                  isPathMode={isPathMode}
+                  highlightSet={highlightSet}
+                  highlightPath={highlightPath}
+                  onLockChange={(id) => {
+                    setLockedToNodeId(id);
+                    setIsLockEnabled(id !== null);
+                    sessionStorage.setItem("lockCamera", String(id !== null));
+                  }}
+                  activeNodeId={activePage?.id ?? null}
                 />
 
                 {/* Sidebar — overlays the graph */}
@@ -324,22 +376,6 @@ export default function App() {
                   onSave={handleSave}
                   onGoHome={goHome}
                   uiAnimations={uiAnimations}
-                  isHighlightMode={isHighlightMode}
-                  onToggleHighlightMode={() => {
-                    const next = !isHighlightMode;
-                    setIsHighlightMode(next);
-                    if (!next) setHighlightedNodes(new Set());
-                    sessionStorage.setItem("isHighlightMode", String(next));
-                  }}
-                  isPathMode={isPathMode}
-                  onTogglePathMode={() => {
-                    const next = !isPathMode;
-                    setIsPathMode(next);
-                    sessionStorage.setItem("isPathMode", String(next));
-                  }}
-                  highlightedNodes={highlightedNodes}
-                  onClearHighlights={() => setHighlightedNodes(new Set())}
-                  onHighlightNode={handleNodeHighlight}
                   onToggleUiAnimations={() => {
                     setUiAnimations((p) => {
                       const n = !p;
@@ -361,7 +397,7 @@ export default function App() {
                         setActivePage(null);
                         setPageHistory([]);
                       }}
-                      onNavigate={handleNavigatePage}
+                      onNodeSelect={handleNodeSelect}
                       onBack={handleBackPage}
                       canGoBack={pageHistory.length > 0}
                       isEditMode={isEditMode}
@@ -370,8 +406,14 @@ export default function App() {
                       onJump={handleJumpToHistory}
                       graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
-                      isHighlightMode={isHighlightMode}
-                      onHighlightNode={handleNodeHighlight}
+                      isPathMode={isPathMode}
+                      onTogglePathMode={handleTogglePathMode}
+                      highlightPath={highlightPath}
+                      onClearPath={handleClearPath}
+                      isCameraLocked={lockedToNodeId !== null}
+                      lockedToNodeId={lockedToNodeId}
+                      onLockCamera={handleLockCamera}
+                      onUnlockCamera={handleUnlockCamera}
                     />
                   )}
                 </AnimatePresence>

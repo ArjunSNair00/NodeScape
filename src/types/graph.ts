@@ -96,6 +96,10 @@ export interface GraphHandle {
   ) => void;
   toggleNodeIcons: () => boolean;
 
+  focusToNode: (nodeId: string) => void;
+  lockToNode: (nodeId: string) => void;
+  unlockCamera: () => void;
+
   // Bulk Mutations
   appendNodes: (data: GraphData) => void;
   updateNodes: (nodes: Partial<NodeData>[]) => void;

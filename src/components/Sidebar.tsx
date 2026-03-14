@@ -15,13 +15,6 @@ interface Props {
   onGoHome: () => void;
   uiAnimations?: boolean;
   onToggleUiAnimations?: () => void;
-  isHighlightMode?: boolean;
-  onToggleHighlightMode?: () => void;
-  isPathMode?: boolean;
-  onTogglePathMode?: () => void;
-  highlightedNodes?: Set<string>;
-  onClearHighlights?: () => void;
-  onHighlightNode?: (id: string) => void;
 }
 
 type Tab = "ai" | "prompt" | "paste" | "editor" | "controls" | "info";
@@ -46,13 +39,6 @@ export default function Sidebar({
   onGoHome,
   uiAnimations = true,
   onToggleUiAnimations,
-  isHighlightMode = false,
-  onToggleHighlightMode,
-  isPathMode = false,
-  onTogglePathMode,
-  highlightedNodes = new Set(),
-  onClearHighlights,
-  onHighlightNode,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("ai");
   const [copied, setCopied] = useState(false);
@@ -200,11 +186,6 @@ export default function Sidebar({
                 originalGraphData={originalGraphData}
                 uiAnimations={uiAnimations}
                 onToggleUiAnimations={onToggleUiAnimations}
-                isHighlightMode={isHighlightMode}
-                onToggleHighlightMode={onToggleHighlightMode}
-                isPathMode={isPathMode}
-                onTogglePathMode={onTogglePathMode}
-                onClearHighlights={onClearHighlights}
               />
             )}
             {activeTab === "info" && (
@@ -223,23 +204,12 @@ function ControlsTab({
   originalGraphData,
   uiAnimations,
   onToggleUiAnimations,
-  isHighlightMode,
-  onToggleHighlightMode,
-  isPathMode,
-  onTogglePathMode,
-  onClearHighlights,
 }: {
   graphRef: React.RefObject<GraphHandle | null>;
   originalGraphData?: GraphData;
   uiAnimations: boolean;
   onToggleUiAnimations?: () => void;
-  isHighlightMode: boolean;
-  onToggleHighlightMode?: () => void;
-  isPathMode: boolean;
-  onTogglePathMode?: () => void;
-  onClearHighlights?: () => void;
 }) {
-  const [showHighlightDropdown, setShowHighlightDropdown] = useState(false);
   const [jiggling, setJiggling] = useState(false);
   const [physicsOffWarning, setPhysicsOffWarning] = useState(false);
   const [labelLevel, setLabelLevel] = useState(() =>
@@ -269,9 +239,10 @@ function ControlsTab({
   const [expandReplace, setExpandReplace] = useState(
     () => sessionStorage.getItem("expandReplace") === "true",
   );
-  const [autoSave, setAutoSave] = useState(
-    () => sessionStorage.getItem("autoSave") !== "false",
-  );
+  const [autoSave, setAutoSave] = useState(() => {
+    const saved = sessionStorage.getItem("autoSave");
+    return saved === "true";
+  });
   const [graphGrowthAnimation, setGraphGrowthAnimation] = useState(
     () => sessionStorage.getItem("graphGrowthAnimation") !== "false",
   );
@@ -768,71 +739,6 @@ function ControlsTab({
         </ActionBtn>
       </BtnRow>
 
-      <BtnRow label="Highlight Mode">
-        <div className="relative flex items-center gap-1">
-          <ActionBtn
-            onClick={onToggleHighlightMode || (() => {})}
-            active={isHighlightMode}
-            className="rounded-r-none border-r-0"
-            style={{ width: "60px" }}
-          >
-            {isHighlightMode ? "ON" : "OFF"}
-          </ActionBtn>
-          <button
-            onClick={() => setShowHighlightDropdown(!showHighlightDropdown)}
-            className={`flex items-center justify-center w-8 h-9 rounded-r-lg border transition-all duration-200 ${
-              showHighlightDropdown 
-                ? "border-accent text-accent bg-accent/15" 
-                : "border-border2 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
-            }`}
-          >
-            <svg className={`w-3 h-3 transition-transform duration-200 ${showHighlightDropdown ? 'rotate-180' : ''}`} viewBox="0 0 12 12" fill="none" stroke="currentColor">
-              <path d="M3 4.5l3 3 3-3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-
-          <AnimatePresence>
-            {showHighlightDropdown && (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full right-0 mb-2 w-48 bg-surface border border-border2 rounded-xl shadow-2xl overflow-hidden z-[100] p-1.5"
-              >
-                <button
-                  onClick={() => {
-                    onTogglePathMode?.();
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-surface2 transition-colors group"
-                >
-                  <span className="text-[10px] tracking-widest text-muted2 group-hover:text-text">PATH MODE</span>
-                  <div className={`w-3.5 h-3.5 rounded border transition-all flex items-center justify-center ${isPathMode ? 'bg-accent border-accent' : 'border-border2'}`}>
-                    {isPathMode && (
-                      <svg className="w-2 h-2 text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="3">
-                        <path d="M2.5 6l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </div>
-                </button>
-                <div className="h-px bg-border/50 my-1" />
-                <button
-                  onClick={() => {
-                    onClearHighlights?.();
-                    setShowHighlightDropdown(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red/10 text-muted2 hover:text-red transition-colors group text-left"
-                >
-                  <svg className="w-3 h-3 opacity-50 group-hover:opacity-100" viewBox="0 0 12 12" fill="none" stroke="currentColor">
-                    <path d="M2 2l8 8M10 2l-8 8" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                  <span className="text-[10px] tracking-widest">CLEAR PATH</span>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </BtnRow>
-
       <BtnRow label="Randomize colours">
         <ActionBtn onClick={() => g()?.randomizeColors()} wide>
           <svg
@@ -861,13 +767,49 @@ function ControlsTab({
         <p className="text-[10px] text-muted tracking-widest uppercase mb-3">
           Keyboard shortcuts
         </p>
+        <p className="text-[10px] text-muted tracking-widest uppercase mb-3">
+          Graph View
+        </p>
         {[
+          ["Click node", "Focus node & expand related topics"],
+          ["Right click node", "Edit node"],
+          ["Right click empty space", "Add node"],
+          ["Middle click node", "Lock camera to node (no selection)"],
+          ["Middle click empty space", "Unlock camera"],
+          ["Drag / Middle drag", "Rotate camera"],
+          ["Right drag / Shift + drag", "Pan camera"],
+          ["Scroll / Middle drag", "Zoom camera"],
           ["Arrow keys", "Pan camera"],
-          ["Shift + Arrow", "Rotate camera"],
-          ["Shift + drag", "Pan camera"],
+          ["Shift + Arrow keys", "Rotate camera"],
+        ].map(([key, desc]) => (
+          <div
+            key={key}
+            className="flex justify-between items-center py-1.5 border-b border-border last:border-0"
+          >
+            <span className="text-[10px] font-mono text-accent2 bg-accent2/10 px-1.5 py-0.5 rounded">
+              {key}
+            </span>
+            <span className="text-[11px] text-muted2">{desc}</span>
+          </div>
+        ))}
+        <br></br>
+        <p className="text-[10px] text-muted tracking-widest uppercase mb-3">
+          Edit Mode
+        </p>
+        {[
+          ["Click node", "Add node attached to clicked node"],
+          [
+            "Shift + Drag node",
+            "Drag to create new node attached to dragged node",
+          ],
+          ["Middle click node", "Lock camera to node"],
+          ["Middle click empty space", "Unlock camera"],
+          ["Drag / Middle drag", "Rotate camera"],
+          ["Shift + drag / Right drag", "Pan camera"],
           ["Right drag", "Pan camera"],
-          ["Middle drag", "Zoom camera"],
-          ["Scroll", "Zoom"],
+          ["Scroll / Middle drag", "Zoom camera"],
+          ["Arrow keys", "Pan camera"],
+          ["Shift + Arrow keys", "Rotate camera"],
         ].map(([key, desc]) => (
           <div
             key={key}
@@ -923,6 +865,7 @@ function PromptTab({
             key={topic}
             className="text-[10px] text-muted2 bg-surface2 border border-border px-2.5 py-1 rounded-full"
           >
+            ``
             {topic}
           </span>
         ))}

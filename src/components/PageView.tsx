@@ -8,15 +8,21 @@ interface Props {
   isEditMode: boolean;
   canGoBack?: boolean;
   onClose: () => void;
-  onNavigate: (node: NodeData) => void;
+  onNodeSelect: (nodeId: string) => void;
   onBack?: () => void;
   uiAnimations?: boolean;
   history?: NodeData[];
   onJump?: (index: number) => void;
   graphTitle?: string;
   onUpdateNode: (updatedNode: NodeData) => void;
-  isHighlightMode?: boolean;
-  onHighlightNode?: (id: string) => void;
+  isPathMode?: boolean;
+  onTogglePathMode?: () => void;
+  highlightPath?: string[];
+  onClearPath?: () => void;
+  isCameraLocked?: boolean;
+  lockedToNodeId?: string | null;
+  onLockCamera?: (nodeId: string) => void;
+  onUnlockCamera?: () => void;
 }
 
 function EditableText({
@@ -97,15 +103,21 @@ export default function PageView({
   isEditMode,
   canGoBack,
   onClose,
-  onNavigate,
+  onNodeSelect,
   onBack,
   uiAnimations = true,
   history = [],
   onJump,
   graphTitle = "graph",
   onUpdateNode,
-  isHighlightMode,
-  onHighlightNode,
+  isPathMode = false,
+  onTogglePathMode,
+  highlightPath = [],
+  onClearPath,
+  isCameraLocked = false,
+  lockedToNodeId = null,
+  onLockCamera,
+  onUnlockCamera,
 }: Props) {
   const Wrapper = uiAnimations ? motion.div : ("div" as any);
   const MotionH1 = uiAnimations ? motion.h1 : ("h1" as any);
@@ -123,11 +135,12 @@ export default function PageView({
         } : {})}
         className="absolute inset-0 z-30 bg-bg flex flex-col overflow-y-auto"
       >
-      {/* Header */}
+      {/* Header + Controls - sticky together */}
       <div
-        className="sticky top-0 z-10 flex items-center gap-4 px-7 py-3.5 border-b border-border backdrop-blur-xl"
+        className="sticky top-0 z-10 backdrop-blur-xl shrink-0"
         style={{ background: "rgba(8,8,16,0.94)" }}
       >
+        <div className="flex items-center gap-4 px-7 py-3.5">
         <button
           onClick={onClose}
           className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
@@ -165,9 +178,7 @@ export default function PageView({
           {history.map((h, i) => (
             <span key={`${h.id}-${i}`}>
               <button
-                onClick={() => {
-                  if (onJump) onJump(i);
-                }}
+                onClick={() => onJump?.(i)}
                 className="hover:text-accent transition-colors"
               >
                 {h.label.toLowerCase().replace(/ /g, "-")}
@@ -179,6 +190,40 @@ export default function PageView({
             {node.label.toLowerCase().replace(/ /g, "-")}
           </span>
         </span>
+        </div>
+        {/* Controls row: Lock Camera left, Path Mode + Clear Path right */}
+        <div className="flex items-center justify-between gap-2 px-7 py-2.5 border-t border-border">
+          <button
+            onClick={() => (isCameraLocked && lockedToNodeId === node.id ? onUnlockCamera?.() : onLockCamera?.(node.id))}
+            className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
+              isCameraLocked && lockedToNodeId === node.id
+                ? "border-accent text-accent bg-accent/10"
+                : "border-border text-muted hover:border-accent/60"
+            }`}
+          >
+            Lock Camera {isCameraLocked && lockedToNodeId === node.id ? "ON" : "OFF"}
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onTogglePathMode ?? (() => {})}
+              className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
+                isPathMode
+                  ? "border-accent text-accent bg-accent/10"
+                  : "border-border text-muted hover:border-accent/60"
+              }`}
+            >
+              Path Mode {isPathMode ? "ON" : "OFF"}
+            </button>
+            {highlightPath.length > 0 && (
+              <button
+                onClick={onClearPath ?? (() => {})}
+                className="flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border border-border text-muted hover:border-[#f87171] hover:text-[#f87171] transition-all"
+              >
+                Clear Path
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Body */}
@@ -287,12 +332,7 @@ export default function PageView({
                   return (
                     <button
                       key={cid}
-                      onClick={() => {
-                        onNavigate(cn);
-                        if (isHighlightMode && onHighlightNode) {
-                          onHighlightNode(cn.id);
-                        }
-                      }}
+                      onClick={() => onNodeSelect(cn.id)}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border transition-all duration-200 text-xs ${
                         isVisited 
                           ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40" 
