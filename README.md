@@ -507,7 +507,7 @@ eg:-
      node     Relationship   node   
 ```
 
-- Encapsulation of nodes (universe inside another universe)
+- Encapsulation of nodes (universe inside another universe):- node contains subgraph
 - branches (parallel universe)
 - clustering (implement a tag system)
 - Coloring nodes which are similar
