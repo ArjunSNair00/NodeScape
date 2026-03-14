@@ -540,6 +540,42 @@ AI Generation History
 ```
 - Redis Caching for generating frequently generated graphs instantly 
 - Redis track popular graphs automatically and show: Trending knowledge graphs
+- Semantic caching systems to avoid regenerating results for similar prompts, not just identical ones
+
+```
+"Stoicism" → cached
+"Stoicism philosophy" → NOT cached
+"Stoic philosophy" → NOT cached
+```
+
+Even though they mean the same thing, the cache misses.
+
+Semantic caching idea:-
+Instead of storing only the topic text, you store an embedding vector representing its meaning.
+Generate embeddings using a small model like
+all-MiniLM-L6-v2.
+Example embeddings:
+```
+Stoicism → [0.12, -0.45, 0.33, ...]
+Stoic philosophy → [0.11, -0.44, 0.35, ...]
+These vectors are very similar.
+```
+
+Semantic caching Architecture: 
+```
+React (Vercel)
+      ↓
+FastAPI
+      ↓
+Embedding model
+      ↓
+Vector similarity search
+      ↓
+Redis / DB
+      ↓
+LLM (only if needed)
+```
+
 - Mobile version in React Native
  (Nodescape V3)
 - Mini-Map for navigation (useful for mobile)
