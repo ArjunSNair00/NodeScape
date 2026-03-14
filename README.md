@@ -41,6 +41,12 @@ You can:
 
 ---
 
+# 💻 Demo: Using the graph view in combination with path mode
+
+[![Video Thumbnail](screenshots-and-demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
+
+---
+
 # 🌌 Knowledge Graph Explorer
 
 Navigate complex subjects inside a **fully interactive graph environment**.
@@ -51,8 +57,6 @@ NodeScape supports both:
 - **2D structured layout**
 
 This allows users to explore concepts spatially or in a structured hierarchy.
-
-[![Video Thumbnail](screenshots-and-demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
 
 ### Desktop Controls
 
@@ -66,6 +70,10 @@ Arrow Keys | Pan camera |
 Shift + Arrow | Rotate camera |
 Drag Node | Move node |
 Middle Click Node | Lock camera to node |
+
+<p align="center">
+  <img src="screenshots-and-demos/graph.gif" width="600"/>
+</p>
 
 ---
 
