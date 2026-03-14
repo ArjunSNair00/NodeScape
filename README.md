@@ -576,6 +576,29 @@ Redis / DB
 LLM (only if needed)
 ```
 
+How the system works
+When generating a graph
+```
+User topic
+   ↓
+Create embedding
+   ↓
+Search cache for similar embedding
+```
+
+If similarity > threshold (ex: 0.9):
+```
+Return cached graph
+```
+
+Otherwise:
+
+```
+Generate graph with LLM
+Store embedding + graph
+```
+
+
 - Mobile version in React Native
  (Nodescape V3)
 - Mini-Map for navigation (useful for mobile)
