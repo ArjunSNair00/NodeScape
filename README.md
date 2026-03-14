@@ -539,6 +539,7 @@ AI Generation History
 = how the result was created
 ```
 - Redis Caching for generating frequently generated graphs instantly 
+- Redis track popular graphs automatically and show: Trending knowledge graphs
 - Mobile version in React Native
  (Nodescape V3)
 - Mini-Map for navigation (useful for mobile)
