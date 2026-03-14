@@ -108,10 +108,24 @@ export function buildSceneObjects(
     ]
     const geo = new THREE.BufferGeometry().setFromPoints(pts)
     const color = new THREE.Color(l.source.hex).lerp(new THREE.Color(l.target.hex), 0.5)
+    
+    // Regular material
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75 })
+    
+    // Dashed material for Highlight Mode pathing
+    const dashedMat = new THREE.LineDashedMaterial({ 
+      color, 
+      transparent: true, 
+      opacity: 0.5,
+      dashSize: 4,
+      gapSize: 4,
+    })
+
     const line = new THREE.Line(geo, mat)
+    line.computeLineDistances() // For dashed lines
+    
     scene.add(line)
-    linkObjs.push({ line, mat, source: l.source, target: l.target })
+    linkObjs.push({ line, mat, dashedMat, source: l.source, target: l.target })
   })
 
   return { nodeObjs, linkObjs }
@@ -256,6 +270,62 @@ export function setHoveredNode(
   })
 
   return hit
+}
+
+export function setHighlighted(
+  highlightedIds: Set<string>,
+  nodeObjs: NodeObj[],
+  linkObjs: LinkObj[]
+) {
+  const isAnyHighlighted = highlightedIds.size > 0
+
+  nodeObjs.forEach(o => {
+    const spr = o.node._sprMat
+    if (!isAnyHighlighted) {
+      o.mat.emissiveIntensity = 0.5
+      o.mat.opacity = 0.95
+      o.glowMat.opacity = 0.055
+      if (spr) spr.opacity = 1
+      return
+    }
+
+    const isHov = highlightedIds.has(o.node.id)
+    const isConn = Array.from(highlightedIds).some(hid => 
+      o.node.connections.includes(hid)
+    )
+
+    o.mat.emissiveIntensity = isHov ? 1.4 : isConn ? 0.8 : 0.15
+    o.mat.opacity = isHov ? 1 : isConn ? 0.85 : 0.12
+    o.glowMat.opacity = isHov ? 0.28 : isConn ? 0.081 : 0.005
+    if (spr) spr.opacity = isHov ? 1 : isConn ? 0.8 : 0.15
+  })
+
+  linkObjs.forEach(lo => {
+    if (!isAnyHighlighted) {
+      lo.line.material = lo.mat
+      lo.mat.opacity = 0.75
+      return
+    }
+
+    const sH = highlightedIds.has(lo.source.id)
+    const tH = highlightedIds.has(lo.target.id)
+
+    if (sH && tH) {
+      // Line between two highlighted nodes -> solid bold
+      lo.line.material = lo.mat
+      lo.mat.opacity = 1
+    } else if (sH || tH) {
+      // Connection to highlighted node -> dotted
+      if (lo.dashedMat) {
+        lo.line.material = lo.dashedMat
+        lo.dashedMat.opacity = 0.7
+      }
+    } else {
+      // Irrelevant line -> very transparent
+      lo.line.material = lo.mat
+      lo.mat.opacity = 0.04
+    }
+  })
 }
 
 export function applyCam(camera: THREE.PerspectiveCamera, spherical: Spherical, panOffset: THREE.Vector3) {

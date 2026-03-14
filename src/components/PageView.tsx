@@ -15,6 +15,8 @@ interface Props {
   onJump?: (index: number) => void;
   graphTitle?: string;
   onUpdateNode: (updatedNode: NodeData) => void;
+  isHighlightMode?: boolean;
+  onHighlightNode?: (id: string) => void;
 }
 
 function EditableText({
@@ -102,6 +104,8 @@ export default function PageView({
   onJump,
   graphTitle = "graph",
   onUpdateNode,
+  isHighlightMode,
+  onHighlightNode,
 }: Props) {
   const Wrapper = uiAnimations ? motion.div : ("div" as any);
   const MotionH1 = uiAnimations ? motion.h1 : ("h1" as any);
@@ -283,7 +287,12 @@ export default function PageView({
                   return (
                     <button
                       key={cid}
-                      onClick={() => onNavigate(cn)}
+                      onClick={() => {
+                        onNavigate(cn);
+                        if (isHighlightMode && onHighlightNode) {
+                          onHighlightNode(cn.id);
+                        }
+                      }}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border transition-all duration-200 text-xs ${
                         isVisited 
                           ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40" 

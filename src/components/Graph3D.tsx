@@ -26,6 +26,7 @@ import {
   runPhysics,
   syncPositions,
   setHoveredNode,
+  setHighlighted,
   applyCam,
   buildLabelSprite,
   hexToInt,
@@ -51,6 +52,9 @@ interface Props {
   onToggleSplitMode?: () => void;
   uiAnimations?: boolean;
   onToggleUiAnimations?: () => void;
+  isHighlightMode?: boolean;
+  highlightedNodes?: Set<string>;
+  onNodeClick?: (id: string) => void;
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -174,6 +178,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     onToggleSplitMode,
     uiAnimations = true,
     onToggleUiAnimations,
+    isHighlightMode = false,
+    highlightedNodes = new Set(),
+    onNodeClick,
   },
   ref,
 ) {
@@ -1806,7 +1813,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             if (!doubleClickedSprite) {
               const hit = getHit(e.clientX, e.clientY);
 
-              if (hit && "node" in hit) onOpenPage(hit.node);
+              if (hit && "node" in hit) {
+                onOpenPage(hit.node);
+                if (isHighlightMode && onNodeClick) {
+                  onNodeClick(hit.node.id);
+                }
+              }
             }
           }
         }
@@ -1867,7 +1879,16 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [doApplyCam, doPan, getHit, kickIdle, onOpenPage, showTooltip]);
+  }, [doApplyCam, doPan, getHit, kickIdle, onOpenPage, showTooltip, isHighlightMode, onNodeClick]);
+
+  // Sync Highlight Mode visuals
+  useEffect(() => {
+    if (isHighlightMode) {
+      setHighlighted(highlightedNodes, nodeObjsRef.current, linkObjsRef.current);
+    } else {
+      setHighlighted(new Set(), nodeObjsRef.current, linkObjsRef.current);
+    }
+  }, [highlightedNodes, isHighlightMode]);
 
   // ── touch events ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2020,7 +2041,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       ) {
         const touch = e.changedTouches[0];
         const hit = getHit(touch.clientX, touch.clientY);
-        if (hit && "node" in hit) onOpenPage(hit.node);
+        if (hit && "node" in hit) {
+          onOpenPage(hit.node);
+          if (isHighlightMode && onNodeClick) {
+            onNodeClick(hit.node.id);
+          }
+        }
       }
       draggedNodeRef.current = null;
       draggedLinkRef.current = null;
@@ -2349,6 +2375,9 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               key={n.id}
               onClick={() => {
                 onOpenPage(n);
+                if (isHighlightMode && onNodeClick) {
+                  onNodeClick(n.id);
+                }
                 setLeftSidebarOpen(false);
               }}
               className="w-full text-left px-3 py-2 text-xs text-muted hover:text-text hover:bg-surface2 rounded transition-colors truncate flex items-center gap-2"

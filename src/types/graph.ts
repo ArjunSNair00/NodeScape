@@ -64,6 +64,7 @@ export interface NodeObj {
 export interface LinkObj {
   line: THREE.Line;
   mat: THREE.LineBasicMaterial;
+  dashedMat?: THREE.LineDashedMaterial;
   source: SimNode;
   target: SimNode;
   animProgress?: number;

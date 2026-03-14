@@ -28,6 +28,13 @@ export default function App() {
     () => sessionStorage.getItem("uiAnimations") !== "false",
   );
   const [isSplitMode, setIsSplitMode] = useState(false);
+  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
+  const [isHighlightMode, setIsHighlightMode] = useState(
+    () => sessionStorage.getItem("isHighlightMode") === "true"
+  );
+  const [isPathMode, setIsPathMode] = useState(
+    () => sessionStorage.getItem("isPathMode") === "true"
+  );
   const [splitWidth, setSplitWidth] = useState(50); // percentage
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +101,22 @@ export default function App() {
       const id = saveGraph(data, currentId);
       setCurrentId(id);
     }
+  };
+
+  // Handle node selection/highlighting
+  const handleNodeHighlight = (nodeId: string) => {
+    if (!isHighlightMode) return;
+    
+    setHighlightedNodes((prev) => {
+      const next = new Set(prev);
+      if (isPathMode) {
+        next.add(nodeId);
+      } else {
+        next.clear();
+        next.add(nodeId);
+      }
+      return next;
+    });
   };
 
   // Handle direct node updates from PageView or Double-Click inline editing
@@ -213,6 +236,8 @@ export default function App() {
                       onJump={handleJumpToHistory}
                       graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
+                      isHighlightMode={isHighlightMode}
+                      onHighlightNode={handleNodeHighlight}
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-in fade-in zoom-in duration-500">
@@ -283,6 +308,9 @@ export default function App() {
                       setCurrentId(newId);
                     }
                   }}
+                  isHighlightMode={isHighlightMode}
+                  highlightedNodes={highlightedNodes}
+                  onNodeClick={handleNodeHighlight}
                 />
 
                 {/* Sidebar — overlays the graph */}
@@ -296,6 +324,22 @@ export default function App() {
                   onSave={handleSave}
                   onGoHome={goHome}
                   uiAnimations={uiAnimations}
+                  isHighlightMode={isHighlightMode}
+                  onToggleHighlightMode={() => {
+                    const next = !isHighlightMode;
+                    setIsHighlightMode(next);
+                    if (!next) setHighlightedNodes(new Set());
+                    sessionStorage.setItem("isHighlightMode", String(next));
+                  }}
+                  isPathMode={isPathMode}
+                  onTogglePathMode={() => {
+                    const next = !isPathMode;
+                    setIsPathMode(next);
+                    sessionStorage.setItem("isPathMode", String(next));
+                  }}
+                  highlightedNodes={highlightedNodes}
+                  onClearHighlights={() => setHighlightedNodes(new Set())}
+                  onHighlightNode={handleNodeHighlight}
                   onToggleUiAnimations={() => {
                     setUiAnimations((p) => {
                       const n = !p;
@@ -326,6 +370,8 @@ export default function App() {
                       onJump={handleJumpToHistory}
                       graphTitle={graphData.title}
                       onUpdateNode={handleNodeUpdate}
+                      isHighlightMode={isHighlightMode}
+                      onHighlightNode={handleNodeHighlight}
                     />
                   )}
                 </AnimatePresence>
