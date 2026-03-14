@@ -554,6 +554,7 @@ Semantic caching idea:-
 Instead of storing only the topic text, you store an embedding vector representing its meaning.
 Generate embeddings using a small model like
 all-MiniLM-L6-v2.
+Generated embeddings are stored in vector database (pgvector)
 Example embeddings:
 ```
 Stoicism → [0.12, -0.45, 0.33, ...]
