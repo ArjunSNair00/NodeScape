@@ -365,10 +365,39 @@ You can freely mix all three approaches while building your knowledge graphs.
 
 NodeScape is evolving toward becoming a **self-expanding knowledge engine**.
 
-### 🤖 Other External AI Integration
+## ☁️ Cloud Backend (Supabase)
 
-- Ollama local models
-- OpenAI / Anthropic API integration
+Future versions of NodeScape will introduce a **Supabase-powered backend** to support persistent and collaborative knowledge graphs.
+
+Planned capabilities include:
+
+• **Cloud graph storage** – save graphs securely in a hosted database  
+• **User authentication** – personal graph libraries linked to accounts  
+• **Cross-device sync** – access your knowledge maps from anywhere  
+• **Collaborative graphs** – multiple users editing the same graph  
+• **Graph version history** – track how knowledge maps evolve over time  
+• **Shared public graphs** – publish and explore community knowledge maps  
+
+Supabase provides:
+
+- PostgreSQL database
+- authentication
+- real-time updates and multi-device sync
+- storage for graph assets
+
+This will allow NodeScape to move beyond local storage and become a **cloud-based knowledge mapping platform**.
+
+---
+
+### 🔍 Graph Search
+
+Search nodes by:
+
+- title
+- tags
+- content
+  
+---
 
 ### 📄 Knowledge Extraction
 
@@ -382,6 +411,13 @@ Automatically convert them into **knowledge graphs**.
 
 ---
 
+### 🤖 Other External AI Integration
+
+- Ollama local models
+- OpenAI / Anthropic API integration
+
+---
+
 ### 🌱 Self-Expanding Graphs
 
 Nodes can dynamically generate:
@@ -389,28 +425,6 @@ Nodes can dynamically generate:
 - missing concepts
 - deeper subtopics
 - related ideas
-
----
-
-### ☁️ Cloud Graph Database
-
-Move from local storage to a **cloud-based graph database**.
-
-Features:
-
-- multi-device sync
-- collaborative graphs
-- shared knowledge spaces
-
----
-
-### 🔍 Graph Search
-
-Search nodes by:
-
-- title
-- tags
-- content
 
 ---
 
