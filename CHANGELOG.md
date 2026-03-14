@@ -24,11 +24,11 @@ All notable changes to this project will be documented in this file.
 ### Improved
 - 
 
-### Fixed
-- 
-
-### Improved
-- 
-
-### Fixed
-- 
+```
+Added
+Changed
+Improved
+Fixed
+Removed
+Security
+```
