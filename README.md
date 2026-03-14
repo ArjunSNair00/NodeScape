@@ -53,9 +53,7 @@ NodeScape supports both:
 
 This allows users to explore concepts spatially or in a structured hierarchy.
 
-<p align="center">
-  <img src="screenshots&demos/graph.gif" width="600"/>
-</p>
+[![Video Thumbnail](screenshots&demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
 
 ### Desktop Controls
 
