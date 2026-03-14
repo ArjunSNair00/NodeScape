@@ -538,6 +538,7 @@ Saved Graphs
 AI Generation History
 = how the result was created
 ```
+- Redis Caching for generating frequently generated graphs instantly 
 - Mobile version in React Native
  (Nodescape V3)
 - Mini-Map for navigation (useful for mobile)
