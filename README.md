@@ -1,5 +1,8 @@
 <h1 align="center">🌌 NodeScape v1.0.0</h1>
 <p align="center">
+  <img src="screenshots-and-demos/graph1.png" width="800" />
+</p>
+<p align="center">
   <i>"Explore knowledge like a galaxy of interconnected ideas."</i>
 </p>
 
