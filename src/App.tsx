@@ -134,6 +134,15 @@ export default function App() {
     });
   };
 
+  const handleJumpToHistory = (index: number) => {
+    setPageHistory((prev) => {
+      const newHistory = prev.slice(0, index);
+      const target = prev[index];
+      if (target) setActivePage(target);
+      return newHistory;
+    });
+  };
+
   const goHome = () => {
     // Auto-save the current graph (with live drag positions) before leaving the view.
     // This ensures that even without an explicit Save click, positions are preserved.
@@ -189,6 +198,8 @@ export default function App() {
                       canGoBack={pageHistory.length > 0}
                       isEditMode={isEditMode}
                       uiAnimations={uiAnimations}
+                      history={pageHistory}
+                      onJump={handleJumpToHistory}
                       onUpdateNode={handleNodeUpdate}
                     />
                   ) : (
@@ -299,6 +310,8 @@ export default function App() {
                       canGoBack={pageHistory.length > 0}
                       isEditMode={isEditMode}
                       uiAnimations={uiAnimations}
+                      history={pageHistory}
+                      onJump={handleJumpToHistory}
                       onUpdateNode={handleNodeUpdate}
                     />
                   )}

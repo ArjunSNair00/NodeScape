@@ -11,6 +11,8 @@ interface Props {
   onNavigate: (node: NodeData) => void;
   onBack?: () => void;
   uiAnimations?: boolean;
+  history?: NodeData[];
+  onJump?: (index: number) => void;
   onUpdateNode: (updatedNode: NodeData) => void;
 }
 
@@ -95,6 +97,8 @@ export default function PageView({
   onNavigate,
   onBack,
   uiAnimations = true,
+  history = [],
+  onJump,
   onUpdateNode,
 }: Props) {
   const Wrapper = uiAnimations ? motion.div : ("div" as any);
@@ -150,8 +154,21 @@ export default function PageView({
             back
           </button>
         )}
-        <span className="text-[11px] text-muted">
+        <span className="text-[11px] text-muted truncate">
           graph /{" "}
+          {history.map((h, i) => (
+            <span key={`${h.id}-${i}`}>
+              <button
+                onClick={() => {
+                  if (onJump) onJump(i);
+                }}
+                className="hover:text-accent transition-colors"
+              >
+                {h.label.toLowerCase().replace(/ /g, "-")}
+              </button>
+              {" / "}
+            </span>
+          ))}
           <span className="text-accent">
             {node.label.toLowerCase().replace(/ /g, "-")}
           </span>
