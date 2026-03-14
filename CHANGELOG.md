@@ -16,6 +16,15 @@ All notable changes to this project will be documented in this file.
 - Breadcrumb navigation
 - Hierarchy layout system
 
+### Improved
+- Camera controls
+- Node dragging
+- Graph layout interactions
+
+### Fixed
+- Highlight mode resetting issue
+- Minor UI issues
+
 ## [1.1.0] - 16-03-2026
 
 ### Added
