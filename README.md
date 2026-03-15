@@ -1,6 +1,7 @@
-<h1 align="center">🌌 NodeScape</h1>
+<h1 align="center">🌌 NodeScape v1.0.0</h1>
+</p>
 <p align="center">
-  <i>"Explore knowledge like a galaxy."</i>
+  <i>"Explore knowledge like a galaxy of interconnected ideas."</i>
 </p>
 
 <p align="center">
@@ -11,12 +12,10 @@
 </p>
 
 <p align="center">
-  <strong>NodeScape</strong> — Explore knowledge as a living map. <br/>
-  An interactive AI-powered knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
-</p>
+  <img src="screenshots-and-demos/graph1.png" width="800" />
 
 <p align="center">
-  <img src="screenshots&demos/graph1.png" width="800" />
+  NodeScape is an interactive AI-powered spatial knowledge graph explorer that combines visualization, note-taking, and idea exploration into a dynamic network of interconnected concepts, transforming concepts into a navigatable 3D/2D universe.
 </p>
 
 ---
@@ -30,7 +29,7 @@ NodeScape includes a **visual homepage** that acts as a personal graph library.
 Graphs are stored locally in your browser using **local storage**, making NodeScape an **offline-first knowledge workspace**.
 
 <p align="center">
-  <img src="screenshots&demos/homepage2.png" width="800" />
+  <img src="screenshots-and-demos/homepage2.png" width="800" />
 </p>
 
 You can:
@@ -39,6 +38,12 @@ You can:
 - rename or delete existing graphs
 - reopen graphs instantly
 - maintain multiple concept maps
+
+---
+
+# 💻 Demo: Using the graph view in combination with path mode
+
+[![Video Thumbnail](screenshots-and-demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
 
 ---
 
@@ -53,8 +58,6 @@ NodeScape supports both:
 
 This allows users to explore concepts spatially or in a structured hierarchy.
 
-[![Video Thumbnail](screenshots&demos/thumbnail.png)](https://www.youtube.com/watch?v=R8EsM01ls-Y)
-
 ### Desktop Controls
 
 | Action | Result |
@@ -67,6 +70,10 @@ Arrow Keys | Pan camera |
 Shift + Arrow | Rotate camera |
 Drag Node | Move node |
 Middle Click Node | Lock camera to node |
+
+<p align="center">
+  <img src="screenshots-and-demos/graph.gif" width="600"/>
+</p>
 
 ---
 
@@ -91,7 +98,7 @@ Users can explore concepts through:
 - breadcrumb navigation
 
 <p align="center">
-  <img src="screenshots&demos/pathmode.png" width="800" />
+  <img src="screenshots-and-demos/pathmode.png" width="800" />
 </p>
 
 ---
@@ -120,7 +127,7 @@ The hierarchy system works with both **2D and 3D modes**, helping reveal relatio
 - applications
  
 <p align="center">
-  <img src="screenshots&demos/hierarchy.png" width="700" />
+  <img src="screenshots-and-demos/hierarchy.png" width="700" />
 </p>
 
 ---
@@ -138,7 +145,7 @@ This mode:
 Users can switch freely between **2D and 3D views**.
 
 <p align="center">
-  <img src="screenshots&demos/2dmode.png" width="500" />
+  <img src="screenshots-and-demos/2dmode.png" width="500" />
 </p>
 
 ---
@@ -156,7 +163,7 @@ Each node functions like a **knowledge card** containing:
 - Address bar
 
 <p align="center">
-  <img src="screenshots&demos/note2.png" width="800" />
+  <img src="screenshots-and-demos/note2.png" width="800" />
 </p>
 
 This creates a hybrid system between:
@@ -314,10 +321,8 @@ This is the fastest way to explore new topics.
 
 NodeScape also works with external AI tools such as:
 
-- ChatGPT
-- Claude
-- Gemini
-- Local LLMs (Ollama)
+- ChatGPT / Claude / Gemini etc.
+- Local LLMs
 
 Steps:
 
@@ -361,14 +366,94 @@ manual knowledge mapping tool
 
 You can freely mix all three approaches while building your knowledge graphs.
 
+---
+
+# 🌍 Why NodeScape Exists
+
+Most knowledge tools are **linear**.
+
+Notes look like this:
+
+```
+
+Topic
+├ Subtopic
+├ Subtopic
+└ Subtopic
+
+```
+
+But real knowledge does **not grow linearly**.
+Concepts connect across subjects, forming **networks of ideas**.
+
+For example:
+
+```
+
+Artificial Intelligence
+├ Machine Learning
+│  ├ Neural Networks
+│  │  ├ CNN
+│  │  └ Transformers
+│  └ Clustering
+├ Robotics
+└ Computer Vision
+
+```
+
+Traditional notes make it difficult to **see these relationships**.
+You scroll through pages of text instead of **exploring how ideas connect**.
+NodeScape was built to solve this problem.
+
+Instead of reading knowledge like a document, NodeScape lets you:
+
+- **navigate ideas spatially**
+- **see how concepts relate**
+- **explore topics naturally**
+- **build personal knowledge maps**
+
+It treats knowledge like a **landscape**, not a list.
+You don’t just read information — you **explore it**.
+
+---
+
 # 🔮 Future Roadmap
 
 NodeScape is evolving toward becoming a **self-expanding knowledge engine**.
 
-### 🤖 Other External AI Integration
+## ☁️ Cloud Backend (Supabase)
 
-- Ollama local models
-- OpenAI / Anthropic API integration
+Future versions of NodeScape will introduce a **Supabase-powered backend** to support persistent and collaborative knowledge graphs.
+
+Planned capabilities include:
+
+• **Cloud graph storage** – save graphs securely in a hosted database  
+• **User authentication** – personal graph libraries linked to accounts  
+• **Cross-device sync** – access your knowledge maps from anywhere  
+• **Collaborative graphs** – multiple users editing the same graph  
+• **Graph version history** – track how knowledge maps evolve over time  
+• **Shared public graphs** – publish and explore community knowledge maps  
+
+Supabase provides:
+
+- PostgreSQL database
+- authentication
+- real-time updates and multi-device sync
+- storage for graph assets
+
+This will allow NodeScape to move beyond local storage and become a **cloud-based knowledge mapping platform**.
+
+---
+
+### 🔍 Graph Search
+
+Search nodes by:
+
+- title
+- tags
+- content
+  
+---
 
 ### 📄 Knowledge Extraction
 
@@ -382,6 +467,13 @@ Automatically convert them into **knowledge graphs**.
 
 ---
 
+### 🤖 Other External AI Integration
+
+- Ollama local models
+- OpenAI / Anthropic API integration
+
+---
+
 ### 🌱 Self-Expanding Graphs
 
 Nodes can dynamically generate:
@@ -392,34 +484,129 @@ Nodes can dynamically generate:
 
 ---
 
-### ☁️ Cloud Graph Database
-
-Move from local storage to a **cloud-based graph database**.
-
-Features:
-
-- multi-device sync
-- collaborative graphs
-- shared knowledge spaces
-
----
-
-### 🔍 Graph Search
-
-Search nodes by:
-
-- title
-- tags
-- content
-
----
-
 ### 🌌 Visual Enhancements
 
 - bloom & glow effects
 - clustering of related nodes
 - automatic domain grouping
 - smarter layouts for large graphs
+
+---
+
+### Other Future Roadmaps
+
+- Snapshots for graphs (Sub-Library for internal states of graphs, tracks changes, progress of users) 
+- Arrow marks for showing directions between nodes
+- New object: Relationships (Shows how a node connects to another node huge change, for NodeScape V2
+eg:-
+```
+(Human body) -> | has | -> (heart)
+      ^            ^          ^
+      |            |          |
+      |            |          |
+     node     Relationship   node   
+```
+
+- Encapsulation of nodes (universe inside another universe):- node contains subgraph
+- branches (parallel universe)
+- clustering (implement a tag system)
+- Coloring nodes which are similar
+- Legends for the map [uses colored nodes]
+- Planet / Space mode:- Use displacement mapping generated by ai to create dynamic worlds which are explorable/walkable in first-person (walk through a planet of your knowledge), fly from planet to planet for switching topics (not really useful, just for fun)(NodeScape V4 feature)
+- Real-time collaboration for graph creation
+(Nodescape V3 feature)
+```
+websockets
+conflict resolution
+state syncing
+```
+allows users to build idea worlds together, see what paths each are taking
+- Neo4j or ArangoDB database for storage in far future
+- Django api server for ai features
+- AI graph history (previously generated graphs, chat history) using supabase, 
+lets users track what AI created.
+```
+Graph generation
+Graph expansion
+Document → graph
+Automatic concept suggestions
+```
+```
+Saved Graphs
+= final result
+
+AI Generation History
+= how the result was created
+```
+- Redis Caching for generating frequently generated graphs instantly 
+- Redis track popular graphs automatically and show: Trending knowledge graphs
+- Semantic caching systems to avoid regenerating results for similar prompts, not just identical ones
+
+```
+"Stoicism" → cached
+"Stoicism philosophy" → NOT cached
+"Stoic philosophy" → NOT cached
+```
+
+Even though they mean the same thing, the cache misses.
+
+Semantic caching idea:-
+Instead of storing only the topic text, you store an embedding vector representing its meaning.
+Generate embeddings using a small model like
+all-MiniLM-L6-v2.
+Generated embeddings are stored in vector database (pgvector)
+Example embeddings:
+```
+Stoicism → [0.12, -0.45, 0.33, ...]
+Stoic philosophy → [0.11, -0.44, 0.35, ...]
+These vectors are very similar.
+```
+
+Semantic caching Architecture: 
+```
+React (Vercel)
+      ↓
+FastAPI
+      ↓
+Embedding model
+      ↓
+Vector similarity search
+      ↓
+Redis / DB
+      ↓
+LLM (only if needed)
+```
+
+How the system works
+When generating a graph
+```
+User topic
+   ↓
+Create embedding
+   ↓
+Search cache for similar embedding
+```
+
+If similarity > threshold (ex: 0.9):
+```
+Return cached graph
+```
+
+Otherwise:
+
+```
+Generate graph with LLM
+Store embedding + graph
+```
+
+
+- Mobile version in React Native
+ (Nodescape V3)
+- Mini-Map for navigation (useful for mobile)
+---
+
+The primary focus are anything that improves the core mechanism: understanding, navigation
+learning flow 
 
 ---
 
