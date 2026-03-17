@@ -17,6 +17,8 @@ interface Props {
   onUpdateNode: (updatedNode: NodeData) => void;
   isPathMode?: boolean;
   onTogglePathMode?: () => void;
+  isPathAppendMode?: boolean;
+  onTogglePathAppendMode?: () => void;
   highlightPath?: string[];
   onClearPath?: () => void;
   isCameraLocked?: boolean;
@@ -112,6 +114,8 @@ export default function PageView({
   onUpdateNode,
   isPathMode = false,
   onTogglePathMode,
+  isPathAppendMode = false,
+  onTogglePathAppendMode,
   highlightPath = [],
   onClearPath,
   isCameraLocked = false,
@@ -125,40 +129,26 @@ export default function PageView({
   const MotionSpan = uiAnimations ? motion.span : ("span" as any);
 
   return (
-      <Wrapper
-        key={node.id}
-        {...(uiAnimations ? {
-          initial: { opacity: 0, y: 22 },
-          animate: { opacity: 1, y: 0 },
-          exit: { opacity: 0, y: 22 },
-          transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] }
-        } : {})}
-        className="absolute inset-0 z-30 bg-bg flex flex-col overflow-y-auto"
-      >
+    <Wrapper
+      key={node.id}
+      {...(uiAnimations
+        ? {
+            initial: { opacity: 0, y: 22 },
+            animate: { opacity: 1, y: 0 },
+            exit: { opacity: 0, y: 22 },
+            transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
+          }
+        : {})}
+      className="absolute inset-0 z-30 bg-bg flex flex-col overflow-y-auto"
+    >
       {/* Header + Controls - sticky together */}
       <div
         className="sticky top-0 z-10 backdrop-blur-xl shrink-0"
         style={{ background: "rgba(8,8,16,0.94)" }}
       >
         <div className="flex items-center gap-4 px-7 py-3.5">
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
-        >
-          <svg
-            className="w-3 h-3"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path d="M8 2L4 6l4 4" />
-          </svg>
-          graph view
-        </button>
-        {canGoBack && onBack && (
           <button
-            onClick={onBack}
+            onClick={onClose}
             className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
           >
             <svg
@@ -168,40 +158,61 @@ export default function PageView({
               stroke="currentColor"
               strokeWidth="1.5"
             >
-              <path d="M10 6H2M6 10L2 6l4-4" />
+              <path d="M8 2L4 6l4 4" />
             </svg>
-            back
+            graph view
           </button>
-        )}
-        <span className="text-[11px] text-muted truncate">
-          {graphTitle.toLowerCase()} /{" "}
-          {history.map((h, i) => (
-            <span key={`${h.id}-${i}`}>
-              <button
-                onClick={() => onJump?.(i)}
-                className="hover:text-accent transition-colors"
+          {canGoBack && onBack && (
+            <button
+              onClick={onBack}
+              className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
+            >
+              <svg
+                className="w-3 h-3"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
               >
-                {h.label.toLowerCase().replace(/ /g, "-")}
-              </button>
-              {" / "}
+                <path d="M10 6H2M6 10L2 6l4-4" />
+              </svg>
+              back
+            </button>
+          )}
+          <span className="text-[11px] text-muted truncate">
+            {graphTitle.toLowerCase()} /{" "}
+            {history.map((h, i) => (
+              <span key={`${h.id}-${i}`}>
+                <button
+                  onClick={() => onJump?.(i)}
+                  className="hover:text-accent transition-colors"
+                >
+                  {h.label.toLowerCase().replace(/ /g, "-")}
+                </button>
+                {" / "}
+              </span>
+            ))}
+            <span className="text-accent">
+              {node.label.toLowerCase().replace(/ /g, "-")}
             </span>
-          ))}
-          <span className="text-accent">
-            {node.label.toLowerCase().replace(/ /g, "-")}
           </span>
-        </span>
         </div>
         {/* Controls row: Lock Camera left, Path Mode + Clear Path right */}
         <div className="flex items-center justify-between gap-2 px-7 py-2.5 border-t border-border">
           <button
-            onClick={() => (isCameraLocked && lockedToNodeId === node.id ? onUnlockCamera?.() : onLockCamera?.(node.id))}
+            onClick={() =>
+              isCameraLocked && lockedToNodeId === node.id
+                ? onUnlockCamera?.()
+                : onLockCamera?.(node.id)
+            }
             className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
               isCameraLocked && lockedToNodeId === node.id
                 ? "border-accent text-accent bg-accent/10"
                 : "border-border text-muted hover:border-accent/60"
             }`}
           >
-            Lock Camera {isCameraLocked && lockedToNodeId === node.id ? "ON" : "OFF"}
+            Lock Camera{" "}
+            {isCameraLocked && lockedToNodeId === node.id ? "ON" : "OFF"}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -213,6 +224,17 @@ export default function PageView({
               }`}
             >
               Path Mode {isPathMode ? "ON" : "OFF"}
+            </button>
+            <button
+              onClick={onTogglePathAppendMode ?? (() => {})}
+              className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
+                isPathAppendMode
+                  ? "border-accent text-accent bg-accent/10"
+                  : "border-border text-muted hover:border-accent/60"
+              }`}
+              title="When ON, revisiting earlier nodes appends to the current path"
+            >
+              Append {isPathAppendMode ? "ON" : "OFF"}
             </button>
             {highlightPath.length > 0 && (
               <button
@@ -229,11 +251,13 @@ export default function PageView({
       {/* Body */}
       <div className="max-w-2xl mx-auto w-full px-10 py-14 pb-20">
         <MotionSpan
-          {...(uiAnimations ? {
-            initial: { scale: 0.8, opacity: 0 },
-            animate: { scale: 1, opacity: 1 },
-            transition: { delay: 0.05 }
-          } : {})}
+          {...(uiAnimations
+            ? {
+                initial: { scale: 0.8, opacity: 0 },
+                animate: { scale: 1, opacity: 1 },
+                transition: { delay: 0.05 },
+              }
+            : {})}
           className="text-4xl block mb-5"
         >
           <EditableText
@@ -245,11 +269,13 @@ export default function PageView({
         </MotionSpan>
 
         <MotionDiv
-          {...(uiAnimations ? {
-            initial: { opacity: 0 },
-            animate: { opacity: 1 },
-            transition: { delay: 0.08 }
-          } : {})}
+          {...(uiAnimations
+            ? {
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                transition: { delay: 0.08 },
+              }
+            : {})}
           className="flex items-center gap-2 text-[10px] text-muted tracking-[0.15em] uppercase mb-3"
         >
           <span className="inline-block w-6 h-px bg-border" />
@@ -262,11 +288,13 @@ export default function PageView({
         </MotionDiv>
 
         <MotionH1
-          {...(uiAnimations ? {
-            initial: { opacity: 0, y: 8 },
-            animate: { opacity: 1, y: 0 },
-            transition: { delay: 0.1 }
-          } : {})}
+          {...(uiAnimations
+            ? {
+                initial: { opacity: 0, y: 8 },
+                animate: { opacity: 1, y: 0 },
+                transition: { delay: 0.1 },
+              }
+            : {})}
           className="font-serif text-[42px] leading-[1.15] mb-7 text-text"
         >
           <EditableText
@@ -277,11 +305,13 @@ export default function PageView({
         </MotionH1>
 
         <MotionDiv
-          {...(uiAnimations ? {
-            initial: { scaleX: 0, originX: 0 },
-            animate: { scaleX: 1 },
-            transition: { delay: 0.15, duration: 0.4 }
-          } : {})}
+          {...(uiAnimations
+            ? {
+                initial: { scaleX: 0, originX: 0 },
+                animate: { scaleX: 1 },
+                transition: { delay: 0.15, duration: 0.4 },
+              }
+            : {})}
           className="h-px mb-7 opacity-40"
           style={{
             background: "linear-gradient(to right, #7c6af7, transparent)",
@@ -289,11 +319,13 @@ export default function PageView({
         />
 
         <MotionDiv
-          {...(uiAnimations ? {
-            initial: { opacity: 0, y: 6 },
-            animate: { opacity: 1, y: 0 },
-            transition: { delay: 0.18 }
-          } : {})}
+          {...(uiAnimations
+            ? {
+                initial: { opacity: 0, y: 6 },
+                animate: { opacity: 1, y: 0 },
+                transition: { delay: 0.18 },
+              }
+            : {})}
           className="text-sm leading-[1.85] text-[#a0a0be] font-light [&_strong]:text-text [&_strong]:font-medium"
         >
           <EditableText
@@ -309,11 +341,13 @@ export default function PageView({
         {/* Connections */}
         {node.connections.length > 0 && (
           <MotionDiv
-            {...(uiAnimations ? {
-              initial: { opacity: 0 },
-              animate: { opacity: 1 },
-              transition: { delay: 0.25 }
-            } : {})}
+            {...(uiAnimations
+              ? {
+                  initial: { opacity: 0 },
+                  animate: { opacity: 1 },
+                  transition: { delay: 0.25 },
+                }
+              : {})}
             className="mt-12"
           >
             <h3 className="text-[10px] tracking-[0.15em] text-muted uppercase mb-4">
@@ -321,10 +355,14 @@ export default function PageView({
             </h3>
             <div className="flex flex-wrap gap-2">
               {(() => {
-                const visitedIds = new Set(history.map(h => h.id));
-                const unvisited = node.connections.filter(cid => !visitedIds.has(cid));
-                const visited = node.connections.filter(cid => visitedIds.has(cid));
-                
+                const visitedIds = new Set(history.map((h) => h.id));
+                const unvisited = node.connections.filter(
+                  (cid) => !visitedIds.has(cid),
+                );
+                const visited = node.connections.filter((cid) =>
+                  visitedIds.has(cid),
+                );
+
                 return [...unvisited, ...visited].map((cid) => {
                   const cn = nodeMap[cid];
                   if (!cn) return null;
@@ -334,8 +372,8 @@ export default function PageView({
                       key={cid}
                       onClick={() => onNodeSelect(cn.id)}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border transition-all duration-200 text-xs ${
-                        isVisited 
-                          ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40" 
+                        isVisited
+                          ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40"
                           : "border-border bg-surface2 text-muted hover:border-accent hover:text-text hover:bg-accent/10"
                       }`}
                     >

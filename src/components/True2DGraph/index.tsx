@@ -84,6 +84,60 @@ function isPrimaryPathEdge(
   return false;
 }
 
+function getPrimaryPathDirection(
+  sourceId: string,
+  targetId: string,
+  path: string[],
+): { fromId: string; toId: string } | null {
+  for (let i = 0; i < path.length - 1; i++) {
+    const fromId = path[i];
+    const toId = path[i + 1];
+    if (
+      (fromId === sourceId && toId === targetId) ||
+      (fromId === targetId && toId === sourceId)
+    ) {
+      return { fromId, toId };
+    }
+  }
+  return null;
+}
+
+function drawArrowHead(
+  graphics: Graphics,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  color: number,
+  alpha: number,
+  size = 8,
+) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+
+  const tipX = toX;
+  const tipY = toY;
+  const baseX = tipX - ux * size;
+  const baseY = tipY - uy * size;
+
+  const leftX = baseX + px * (size * 0.55);
+  const leftY = baseY + py * (size * 0.55);
+  const rightX = baseX - px * (size * 0.55);
+  const rightY = baseY - py * (size * 0.55);
+
+  graphics.beginFill(color, alpha);
+  graphics.moveTo(tipX, tipY);
+  graphics.lineTo(leftX, leftY);
+  graphics.lineTo(rightX, rightY);
+  graphics.lineTo(tipX, tipY);
+  graphics.endFill();
+}
+
 function drawDashedLine(
   graphics: Graphics,
   x1: number,
@@ -172,6 +226,35 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
   const [layoutAlgorithm, setLayoutAlgorithm] =
     useState<LayoutAlgorithm>("force");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const hoveredNodeIdRef = useRef<string | null>(null);
+
+  // -- Manual Mode & Renamer State --
+  const [isManualMode, setIsManualMode] = useState(false);
+  const manualModeEnabledRef = useRef(false);
+  const [renamer, setRenamer] = useState<{
+    id: string | null;
+    label: string;
+    cx: number;
+    cy: number;
+    sourceNodeId?: string;
+    hex: string;
+    isBulkColor?: boolean;
+    spawnX?: number;
+    spawnY?: number;
+  } | null>(null);
+  const isCommittingRef = useRef(false);
+  const draftEdgeRef = useRef<{
+    sourceId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const draftEdgeGraphicRef = useRef<Graphics | null>(null);
+  const clickRef = useRef<{ time: number; id: string | null }>({
+    time: 0,
+    id: null,
+  });
+  const plusRef = useRef<HTMLDivElement>(null);
+
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -305,6 +388,25 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         g.moveTo(e.a.x, e.a.y);
         g.lineTo(e.b.x, e.b.y);
       }
+
+      if (isPathMode && isPrimary) {
+        const dir = getPrimaryPathDirection(e.a.id, e.b.id, highlightPath);
+        if (dir) {
+          const from = dir.fromId === e.a.id ? e.a : e.b;
+          const to = dir.toId === e.a.id ? e.a : e.b;
+
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const ux = dx / len;
+          const uy = dy / len;
+
+          const tipX = to.x - ux * (to.radius + 2);
+          const tipY = to.y - uy * (to.radius + 2);
+
+          drawArrowHead(g, from.x, from.y, tipX, tipY, colors.edge, alpha, 10);
+        }
+      }
     });
 
     graphRef.current.nodes.forEach((n) => {
@@ -366,6 +468,26 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       label.y = n.y + n.radius + 5;
       label.alpha = alpha;
     });
+
+    if (!draftEdgeGraphicRef.current && edgesLayer) {
+      draftEdgeGraphicRef.current = new Graphics();
+      edgesLayer.addChild(draftEdgeGraphicRef.current);
+    }
+    if (draftEdgeGraphicRef.current) {
+      const dg = draftEdgeGraphicRef.current;
+      if (!dg.destroyed) {
+        dg.clear();
+        const draft = draftEdgeRef.current;
+        if (draft && manualModeEnabledRef.current) {
+          const srcNode = graphRef.current.nodeMap.get(draft.sourceId);
+          if (srcNode) {
+            dg.lineStyle({ width: 2, color: colors.edge, alpha: 0.8 });
+            dg.moveTo(srcNode.x, srcNode.y);
+            dg.lineTo(draft.x, draft.y);
+          }
+        }
+      }
+    }
 
     world.x = viewportRef.current.x;
     world.y = viewportRef.current.y;
@@ -569,14 +691,66 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     app.stage.on("pointerdown", (e: FederatedPointerEvent) => {
       setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
       const isBackground = e.target === app.stage;
+
+      const now = Date.now();
+      if (
+        isBackground &&
+        e.button === 0 &&
+        now - clickRef.current.time < 350 &&
+        clickRef.current.id === "empty" &&
+        manualModeEnabledRef.current
+      ) {
+        const world = worldRef.current;
+        if (world) {
+          const p = screenToWorld(app, world, e.global.x, e.global.y);
+          setRenamer({
+            id: null,
+            label: "",
+            cx: (e.nativeEvent as PointerEvent).clientX,
+            cy: (e.nativeEvent as PointerEvent).clientY,
+            hex: theme === "dark" ? "#ffffff" : "#000000",
+            spawnX: p.x,
+            spawnY: p.y,
+          });
+        }
+        clickRef.current = { time: 0, id: null };
+      } else if (isBackground && e.button === 0) {
+        clickRef.current = { time: now, id: "empty" };
+      }
+
       const isMiddle = e.button === 1;
       const isBackgroundPrimaryDragPan = e.button === 0 && isBackground;
-      if (isMiddle || e.shiftKey || isBackgroundPrimaryDragPan) {
+      if (
+        isMiddle ||
+        (!draftEdgeRef.current && e.shiftKey) ||
+        isBackgroundPrimaryDragPan
+      ) {
         beginPanFromEvent(e);
       }
     });
 
     app.stage.on("pointermove", (e: FederatedPointerEvent) => {
+      // Manual Mode '+' indicator
+      if (
+        manualModeEnabledRef.current &&
+        hoveredNodeIdRef.current &&
+        plusRef.current
+      ) {
+        plusRef.current.style.left = `${e.global.x + 20}px`;
+        plusRef.current.style.top = `${e.global.y - 20}px`;
+        plusRef.current.style.opacity = "1";
+      } else if (plusRef.current) {
+        plusRef.current.style.opacity = "0";
+      }
+
+      if (draftEdgeRef.current && worldRef.current) {
+        const p = screenToWorld(app, worldRef.current, e.global.x, e.global.y);
+        draftEdgeRef.current.x = p.x;
+        draftEdgeRef.current.y = p.y;
+        renderSceneRef.current();
+        return;
+      }
+
       if (isPanningRef.current) {
         viewportRef.current.x =
           panStartRef.current.vx + (e.global.x - panStartRef.current.mx);
@@ -599,13 +773,56 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       }
     });
 
-    app.stage.on("pointerup", () => {
+    const handlePointerUp = (e: FederatedPointerEvent) => {
+      const draft = draftEdgeRef.current;
+      if (draft && worldRef.current) {
+        const p = screenToWorld(app, worldRef.current, e.global.x, e.global.y);
+        let hitNodeId: string | null = null;
+        for (const n of graphRef.current.nodes) {
+          if (n.id === draft.sourceId) continue;
+          if (Math.hypot(n.x - p.x, n.y - p.y) <= n.radius) {
+            hitNodeId = n.id;
+            break;
+          }
+        }
+        if (hitNodeId) {
+          const byId = new Map(graphRef.current.nodes.map((n) => [n.id, n]));
+          const freshNodes = graphData.nodes.map((n) => {
+            const live = byId.get(n.id);
+            return live ? { ...n, position2d: { x: live.x, y: live.y } } : n;
+          });
+          const srcIdx = freshNodes.findIndex((n) => n.id === draft.sourceId);
+          if (
+            srcIdx >= 0 &&
+            !freshNodes[srcIdx].connections.includes(hitNodeId)
+          ) {
+            freshNodes[srcIdx].connections = [
+              ...freshNodes[srcIdx].connections,
+              hitNodeId,
+            ];
+            onGraphChange({ ...graphData, nodes: freshNodes });
+          }
+        } else {
+          setRenamer({
+            id: null,
+            label: "",
+            cx: (e.nativeEvent as PointerEvent).clientX,
+            cy: (e.nativeEvent as PointerEvent).clientY,
+            sourceNodeId: draft.sourceId,
+            hex: theme === "dark" ? "#ffffff" : "#000000",
+            spawnX: p.x,
+            spawnY: p.y,
+          });
+        }
+        draftEdgeRef.current = null;
+        if (draftEdgeGraphicRef.current) draftEdgeGraphicRef.current.clear();
+        renderSceneRef.current();
+      }
       endInteraction();
-    });
+    };
 
-    app.stage.on("pointerupoutside", () => {
-      endInteraction();
-    });
+    app.stage.on("pointerup", handlePointerUp);
+    app.stage.on("pointerupoutside", handlePointerUp);
 
     const tick = () => {
       if (!physicsOnRef.current) {
@@ -687,6 +904,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       nodeGraphicsRef.current.clear();
       nodeLabelRef.current.clear();
       edgeGraphicsRef.current.clear();
+      draftEdgeGraphicRef.current = null;
     };
   }, [colors.bg]);
 
@@ -706,6 +924,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     edgeGraphicsRef.current.clear();
     nodeGraphicsRef.current.clear();
     nodeLabelRef.current.clear();
+    draftEdgeGraphicRef.current = null;
 
     const has2D = graphData.nodes.some((n) => n.position2d);
     if (!has2D) {
@@ -730,9 +949,13 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       nodeGraphic.cursor = "pointer";
       nodeGraphic.on("pointerover", () => {
         setHoveredNodeId(n.id);
+        hoveredNodeIdRef.current = n.id;
       });
       nodeGraphic.on("pointerout", () => {
         setHoveredNodeId((prev) => (prev === n.id ? null : prev));
+        if (hoveredNodeIdRef.current === n.id) {
+          hoveredNodeIdRef.current = null;
+        }
       });
       nodeGraphic.on("pointerdown", (e: FederatedPointerEvent) => {
         e.stopPropagation();
@@ -746,10 +969,39 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           return;
         }
         if (e.button === 0) {
-          // Left-drag on node moves node (Alt+drag also follows this path).
+          const now = Date.now();
+          if (
+            now - clickRef.current.time < 350 &&
+            clickRef.current.id === n.id &&
+            manualModeEnabledRef.current
+          ) {
+            setRenamer({
+              id: n.id,
+              label: n.label,
+              hex: n.color
+                ? "#" + n.color.toString(16).padStart(6, "0")
+                : theme === "dark"
+                  ? "#ffffff"
+                  : "#000000",
+              cx: e.global.x,
+              cy: e.global.y,
+            });
+            clickRef.current = { time: 0, id: null };
+            return;
+          }
+          clickRef.current = { time: now, id: n.id };
+
           const world = worldRef.current;
           if (!world) return;
           const p = screenToWorld(app, world, e.global.x, e.global.y);
+
+          // If Manual Mode + Shift => start draft edge
+          if (e.shiftKey && manualModeEnabledRef.current) {
+            draftEdgeRef.current = { sourceId: n.id, x: p.x, y: p.y };
+            return;
+          }
+
+          // Left-drag on node moves node (Alt+drag also follows this path).
           n.pinned = true;
           draggingNodeRef.current = n;
           dragGestureRef.current = {
@@ -876,6 +1128,74 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
     if (hoveredNodeId === nodeId) setHoveredNodeId(null);
   };
+
+  const commitRenamer = useCallback(
+    (finalRenamer: NonNullable<typeof renamer>) => {
+      isCommittingRef.current = true;
+      const val = finalRenamer.label.trim();
+
+      if (val) {
+        // Build map to preserve latest exact positions before mutating graphData
+        const byId = new Map(graphRef.current.nodes.map((n) => [n.id, n]));
+        const freshNodes = graphData.nodes.map((n) => {
+          const live = byId.get(n.id);
+          return live ? { ...n, position2d: { x: live.x, y: live.y } } : n;
+        });
+
+        if (finalRenamer.id === null) {
+          // Create brand new node
+          if (freshNodes.find((n) => n.id === val)) {
+            alert("A node with this name already exists!");
+            isCommittingRef.current = false;
+            return;
+          }
+
+          const newNode = {
+            id: val,
+            label: val,
+            hex: finalRenamer.hex,
+            category: "concept",
+            icon: "📄",
+            content: "nothing",
+            connections: finalRenamer.sourceNodeId
+              ? [finalRenamer.sourceNodeId]
+              : [],
+            position2d: {
+              x: finalRenamer.spawnX ?? 0,
+              y: finalRenamer.spawnY ?? 0,
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          freshNodes.push(newNode);
+
+          // Connect back to source if it was created via drag
+          if (finalRenamer.sourceNodeId) {
+            const srcIdx = freshNodes.findIndex(
+              (n) => n.id === finalRenamer.sourceNodeId,
+            );
+            if (srcIdx >= 0 && !freshNodes[srcIdx].connections.includes(val)) {
+              freshNodes[srcIdx].connections.push(val);
+            }
+          }
+        } else {
+          // Rename or edit existing node
+          const idx = freshNodes.findIndex((n) => n.id === finalRenamer.id);
+          if (idx !== -1) {
+            freshNodes[idx] = {
+              ...freshNodes[idx],
+              label: val,
+              hex: finalRenamer.hex,
+            };
+          }
+        }
+
+        onGraphChange({ ...graphData, nodes: freshNodes });
+      }
+      isCommittingRef.current = false;
+    },
+    [graphData, onGraphChange],
+  );
 
   const shouldShowLeftSidebar =
     !isSplitMode && (leftSidebarOpen || isLeftSidebarPinned);
@@ -1081,6 +1401,40 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           </svg>
         </button>
 
+        {/* Manual Graph Mode toggle */}
+        <button
+          onClick={() => {
+            const next = !manualModeEnabledRef.current;
+            manualModeEnabledRef.current = next;
+            setIsManualMode(next);
+            if (!next) {
+              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
+              if (plusRef.current) plusRef.current.style.opacity = "0";
+            }
+          }}
+          title={
+            isManualMode ? "Manual Build Mode: ON" : "Manual Build Mode: OFF"
+          }
+          className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-200 backdrop-blur-md ${
+            isManualMode
+              ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+              : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+          }`}
+        >
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+          </svg>
+        </button>
+
         <button
           onClick={onToggleTheme}
           title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
@@ -1139,6 +1493,81 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           STUDIO
         </button>
       </div>
+
+      {/* Manual Mode '+' indicator (Optional visual hint) */}
+      <div
+        ref={plusRef}
+        className="fixed pointer-events-none opacity-0 z-[1002] transition-opacity duration-100 flex items-center justify-center w-5 h-5 rounded-full bg-accent text-white shadow-[0_0_10px_rgba(124,106,247,0.5)]"
+      >
+        <svg
+          className="w-3.5 h-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </div>
+
+      {renamer && (
+        <div
+          id="renamer-modal"
+          className={`absolute z-[2000] flex items-center gap-1.5 p-1.5 rounded-xl border shadow-2xl backdrop-blur-xl ${
+            isDark
+              ? "bg-surface/90 border-border2"
+              : "bg-white/90 border-border"
+          }`}
+          style={{
+            left: renamer.cx,
+            top: renamer.cy,
+            transform: "translate(-50%, -100%)",
+            marginTop: "-24px",
+          }}
+        >
+          {!renamer.isBulkColor && (
+            <input
+              autoFocus
+              type="text"
+              defaultValue={renamer.label}
+              placeholder="Node name..."
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  commitRenamer({ ...renamer, label: e.currentTarget.value });
+                  setRenamer(null);
+                }
+                if (e.key === "Escape") {
+                  setRenamer(null);
+                }
+              }}
+              onChange={(e) => {
+                setRenamer((prev) =>
+                  prev ? { ...prev, label: e.target.value } : prev,
+                );
+              }}
+              className="w-40 bg-transparent px-2 py-1.5 text-sm outline-none text-text placeholder-muted2"
+            />
+          )}
+
+          <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-border2 shadow-sm cursor-pointer group">
+            <input
+              type="color"
+              value={renamer.hex}
+              onChange={(e) => {
+                setRenamer((prev) =>
+                  prev ? { ...prev, hex: e.target.value } : prev,
+                );
+              }}
+              className="absolute inset-[-8px] w-[50px] h-[50px] cursor-pointer"
+            />
+            <div className="absolute inset-0 pointer-events-none ring-1 ring-inset ring-black/10 transition-colors group-hover:ring-black/20" />
+          </div>
+        </div>
+      )}
 
       {contextMenu.visible && (
         <div

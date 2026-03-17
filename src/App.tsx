@@ -36,6 +36,9 @@ export default function App() {
   const [isPathMode, setIsPathMode] = useState(
     () => sessionStorage.getItem("isPathMode") === "true",
   );
+  const [isPathAppendMode, setIsPathAppendMode] = useState(
+    () => sessionStorage.getItem("pathAppendMode") === "true",
+  );
   const highlightSet = new Set(highlightPath);
   const [isLockEnabled, setIsLockEnabled] = useState(
     () => sessionStorage.getItem("lockCamera") !== "false",
@@ -141,7 +144,13 @@ export default function App() {
     if (isPathMode) {
       setHighlightPath((prev) => {
         const idx = prev.indexOf(nodeId);
-        if (idx !== -1) return prev.slice(0, idx + 1);
+        if (idx !== -1) {
+          if (isPathAppendMode) {
+            if (prev[prev.length - 1] === nodeId) return prev;
+            return [...prev, nodeId];
+          }
+          return prev.slice(0, idx + 1);
+        }
         return [...prev, nodeId];
       });
     }
@@ -178,6 +187,12 @@ export default function App() {
       setHighlightPath([]);
     }
     sessionStorage.setItem("isPathMode", String(next));
+  };
+
+  const handleTogglePathAppendMode = () => {
+    const next = !isPathAppendMode;
+    setIsPathAppendMode(next);
+    sessionStorage.setItem("pathAppendMode", String(next));
   };
 
   const handleLockCamera = (nodeId: string) => {
@@ -311,6 +326,8 @@ export default function App() {
                       onUpdateNode={handleNodeUpdate}
                       isPathMode={isPathMode}
                       onTogglePathMode={handleTogglePathMode}
+                      isPathAppendMode={isPathAppendMode}
+                      onTogglePathAppendMode={handleTogglePathAppendMode}
                       highlightPath={highlightPath}
                       onClearPath={handleClearPath}
                       isCameraLocked={lockedToNodeId !== null}
@@ -496,6 +513,8 @@ export default function App() {
                       onUpdateNode={handleNodeUpdate}
                       isPathMode={isPathMode}
                       onTogglePathMode={handleTogglePathMode}
+                      isPathAppendMode={isPathAppendMode}
+                      onTogglePathAppendMode={handleTogglePathAppendMode}
                       highlightPath={highlightPath}
                       onClearPath={handleClearPath}
                       isCameraLocked={lockedToNodeId !== null}
