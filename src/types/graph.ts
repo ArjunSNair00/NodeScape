@@ -17,6 +17,8 @@ export interface NodeData {
   vz?: number;
   /** Persisted 3D position — written by getGraphData(), read by load() */
   position?: { x: number; y: number; z: number };
+  /** Persisted 2D position for True 2D mode */
+  position2d?: { x: number; y: number };
 }
 
 export interface GraphData {

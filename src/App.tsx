@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import Graph3D from "./components/Graph3D";
+import True2DGraph from "./components/True2DGraph";
 import PageView from "./components/PageView";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
 import { GraphData, NodeData, GraphRecord, GraphHandle } from "./types/graph";
+import { Graph2DHandle } from "./components/True2DGraph/graph2d.types";
 import { DEFAULT_GRAPH } from "./data/defaultGraph";
 import { useTheme } from "./hooks/useTheme";
 import { useGraphLibrary } from "./hooks/useGraphLibrary";
@@ -28,17 +30,20 @@ export default function App() {
     () => sessionStorage.getItem("uiAnimations") !== "false",
   );
   const [isSplitMode, setIsSplitMode] = useState(
-    () => sessionStorage.getItem("splitMode") === "true"
+    () => sessionStorage.getItem("splitMode") === "true",
   );
   const [highlightPath, setHighlightPath] = useState<string[]>([]);
   const [isPathMode, setIsPathMode] = useState(
-    () => sessionStorage.getItem("isPathMode") === "true"
+    () => sessionStorage.getItem("isPathMode") === "true",
   );
   const highlightSet = new Set(highlightPath);
   const [isLockEnabled, setIsLockEnabled] = useState(
-    () => sessionStorage.getItem("lockCamera") !== "false"
+    () => sessionStorage.getItem("lockCamera") !== "false",
   );
   const [lockedToNodeId, setLockedToNodeId] = useState<string | null>(null);
+  const [isTrue2D, setIsTrue2D] = useState(
+    () => sessionStorage.getItem("true2DMode") === "true",
+  );
   const [splitWidth, setSplitWidth] = useState(50); // percentage
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -62,6 +67,7 @@ export default function App() {
   };
 
   const graphRef = useRef<GraphHandle>(null);
+  const graph2DRef = useRef<Graph2DHandle>(null);
 
   // Open a saved record (or demo)
   const handleOpen = (record: GraphRecord) => {
@@ -93,11 +99,14 @@ export default function App() {
   // Save current graph to library
   const handleSave = () => {
     let dataToSave = graphData;
-    if (graphRef.current) {
+    if (isTrue2D && graph2DRef.current) {
+      dataToSave = graph2DRef.current.getFreshData();
+    } else if (graphRef.current) {
       dataToSave = graphRef.current.getFreshData();
     }
     const id = saveGraph(dataToSave, currentId);
     setCurrentId(id);
+    setGraphData(dataToSave);
   };
 
   // When AI data generates a new graph — also auto-save it
@@ -137,7 +146,17 @@ export default function App() {
       });
     }
 
-    // 4. Camera: if lock enabled, follow node; else one-time focus
+    // 4. Camera behavior depends on active renderer.
+    // In True2D, only lock mode should re-center; normal node open should not move camera.
+    if (isTrue2D) {
+      if (isLockEnabled) {
+        setLockedToNodeId(nodeId);
+        graph2DRef.current?.lockToNode(nodeId);
+      }
+      return;
+    }
+
+    // In 3D, preserve existing focus/lock behavior.
     if (isLockEnabled) {
       setLockedToNodeId(nodeId);
       graphRef.current?.lockToNode(nodeId);
@@ -165,14 +184,22 @@ export default function App() {
     setIsLockEnabled(true);
     sessionStorage.setItem("lockCamera", "true");
     setLockedToNodeId(nodeId);
-    graphRef.current?.lockToNode(nodeId);
+    if (isTrue2D) {
+      graph2DRef.current?.lockToNode(nodeId);
+    } else {
+      graphRef.current?.lockToNode(nodeId);
+    }
   };
 
   const handleUnlockCamera = () => {
     setIsLockEnabled(false);
     sessionStorage.setItem("lockCamera", "false");
     setLockedToNodeId(null);
-    graphRef.current?.unlockCamera();
+    if (isTrue2D) {
+      graph2DRef.current?.unlockCamera();
+    } else {
+      graphRef.current?.unlockCamera();
+    }
   };
 
   // Handle direct node updates from PageView or Double-Click inline editing
@@ -217,11 +244,15 @@ export default function App() {
     // Auto-save the current graph (with live drag positions) before leaving the view.
     // This ensures that even without an explicit Save click, positions are preserved.
     if (sessionStorage.getItem("autoSave") !== "false") {
-      if (graphRef.current) {
-        const fresh = graphRef.current.getFreshData();
-        if (fresh.nodes.length > 0) {
-          saveGraph(fresh, currentId);
-        }
+      let fresh = graphData;
+      if (isTrue2D && graph2DRef.current) {
+        fresh = graph2DRef.current.getFreshData();
+      } else if (graphRef.current) {
+        fresh = graphRef.current.getFreshData();
+      }
+      if (fresh.nodes.length > 0) {
+        saveGraph(fresh, currentId);
+        setGraphData(fresh);
       }
     }
     setActivePage(null);
@@ -250,14 +281,17 @@ export default function App() {
         ) : (
           <div key="graph" className="absolute inset-0 overflow-hidden">
             {/* Graph area — fills the full container */}
-            <div ref={splitContainerRef} className={`relative w-full h-full flex overflow-hidden ${uiAnimations ? "transition-all duration-300" : ""}`}>
+            <div
+              ref={splitContainerRef}
+              className={`relative w-full h-full flex overflow-hidden ${uiAnimations ? "transition-all duration-300" : ""}`}
+            >
               {isSplitMode && (
-                <div 
+                <div
                   style={{ width: `${splitWidth}%` }}
                   className="relative h-full border-r border-border shrink-0 z-30 bg-bg"
                 >
                   {activePage ? (
-                  <PageView
+                    <PageView
                       node={activePage}
                       nodeMap={Object.fromEntries(
                         graphData.nodes.map((n) => [n.id, n]),
@@ -287,20 +321,29 @@ export default function App() {
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-in fade-in zoom-in duration-500">
                       <div className="w-20 h-20 mb-8 rounded-3xl border border-dashed border-accent/20 flex items-center justify-center text-accent/30 bg-accent/5">
-                        <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-                           <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" />
-                           <path d="M13 2v7h7" />
-                           <circle cx="12" cy="15" r="3" />
-                           <path d="M10 13l4 4" />
+                        <svg
+                          className="w-10 h-10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.2"
+                        >
+                          <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z" />
+                          <path d="M13 2v7h7" />
+                          <circle cx="12" cy="15" r="3" />
+                          <path d="M10 13l4 4" />
                         </svg>
                       </div>
-                      <h3 className="text-base font-medium text-text mb-3 tracking-tight">No Node Selected</h3>
+                      <h3 className="text-base font-medium text-text mb-3 tracking-tight">
+                        No Node Selected
+                      </h3>
                       <p className="text-[11px] text-muted leading-relaxed max-w-[280px]">
-                        Select any node in the graph to reveal its contents here.
+                        Select any node in the graph to reveal its contents
+                        here.
                       </p>
                     </div>
                   )}
-                  <div 
+                  <div
                     onMouseDown={startResizing}
                     className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-50 group pointer-events-auto"
                   >
@@ -308,62 +351,107 @@ export default function App() {
                   </div>
                 </div>
               )}
-              
+
               <div className="flex-1 h-full relative min-w-0">
-                <Graph3D
-                  ref={graphRef}
-                  graphData={graphData}
-                  sidebarOpen={sidebarOpen}
-                  isEditMode={isEditMode}
-                  theme={theme}
-                  onNodeSelect={handleNodeSelect}
-                  onToggleSidebar={() => setSidebarOpen((o) => !o)}
-                  onToggleTheme={toggleTheme}
-                  onToggleEditMode={() => setIsEditMode((o) => !o)}
-                  isSplitMode={isSplitMode}
-                  onToggleSplitMode={() => {
-                    const next = !isSplitMode;
-                    setIsSplitMode(next);
-                    sessionStorage.setItem("splitMode", String(next));
-                  }}
-                  uiAnimations={uiAnimations}
-                  onToggleUiAnimations={() => {
-                    setUiAnimations((p) => {
-                      const n = !p;
-                      sessionStorage.setItem("uiAnimations", String(n));
-                      return n;
-                    });
-                  }}
-                  onGoHome={goHome}
-                  onSave={handleSave}
-                  onRename={(title: string) => {
-                    setGraphData((d) => ({ ...d, title }));
-                  }}
-                  onNodeRename={(id: string, label: string) => {
-                    let currentData = graphData;
-                    if (graphRef.current) {
-                      currentData = graphRef.current.getFreshData();
-                    }
-                    const newNodes = currentData.nodes.map((n) =>
-                      n.id === id ? { ...n, label } : n,
-                    );
-                    const newData = { ...currentData, nodes: newNodes };
-                    setGraphData(newData);
-                    if (sessionStorage.getItem("autoSave") !== "false") {
-                      const newId = saveGraph(newData, currentId);
-                      setCurrentId(newId);
-                    }
-                  }}
-                  isPathMode={isPathMode}
-                  highlightSet={highlightSet}
-                  highlightPath={highlightPath}
-                  onLockChange={(id) => {
-                    setLockedToNodeId(id);
-                    setIsLockEnabled(id !== null);
-                    sessionStorage.setItem("lockCamera", String(id !== null));
-                  }}
-                  activeNodeId={activePage?.id ?? null}
-                />
+                {isTrue2D ? (
+                  <True2DGraph
+                    ref={graph2DRef}
+                    graphData={graphData}
+                    theme={theme}
+                    onNodeSelect={handleNodeSelect}
+                    activeNodeId={activePage?.id ?? null}
+                    highlightPath={highlightPath}
+                    onToggleSidebar={() => setSidebarOpen((o) => !o)}
+                    onGraphChange={handleGraphChange}
+                    isSplitMode={isSplitMode}
+                    sidebarOpen={sidebarOpen}
+                    isEditMode={isEditMode}
+                    onToggleTheme={toggleTheme}
+                    onToggleEditMode={() => setIsEditMode((o) => !o)}
+                    uiAnimations={uiAnimations}
+                    onToggleUiAnimations={() => {
+                      setUiAnimations((p) => {
+                        const n = !p;
+                        sessionStorage.setItem("uiAnimations", String(n));
+                        return n;
+                      });
+                    }}
+                    onGoHome={goHome}
+                    onSave={handleSave}
+                    onRename={(title: string) => {
+                      setGraphData((d) => ({ ...d, title }));
+                    }}
+                    onToggleSplitMode={() => {
+                      const next = !isSplitMode;
+                      setIsSplitMode(next);
+                      sessionStorage.setItem("splitMode", String(next));
+                    }}
+                    onToggleTrue2D={() => {
+                      setIsTrue2D(false);
+                      sessionStorage.setItem("true2DMode", "false");
+                    }}
+                    isPathMode={isPathMode}
+                  />
+                ) : (
+                  <Graph3D
+                    ref={graphRef}
+                    graphData={graphData}
+                    sidebarOpen={sidebarOpen}
+                    isEditMode={isEditMode}
+                    theme={theme}
+                    onNodeSelect={handleNodeSelect}
+                    onToggleSidebar={() => setSidebarOpen((o) => !o)}
+                    onToggleTheme={toggleTheme}
+                    onToggleEditMode={() => setIsEditMode((o) => !o)}
+                    isSplitMode={isSplitMode}
+                    onToggleSplitMode={() => {
+                      const next = !isSplitMode;
+                      setIsSplitMode(next);
+                      sessionStorage.setItem("splitMode", String(next));
+                    }}
+                    onToggleTrue2D={() => {
+                      setIsTrue2D(true);
+                      sessionStorage.setItem("true2DMode", "true");
+                    }}
+                    uiAnimations={uiAnimations}
+                    onToggleUiAnimations={() => {
+                      setUiAnimations((p) => {
+                        const n = !p;
+                        sessionStorage.setItem("uiAnimations", String(n));
+                        return n;
+                      });
+                    }}
+                    onGoHome={goHome}
+                    onSave={handleSave}
+                    onRename={(title: string) => {
+                      setGraphData((d) => ({ ...d, title }));
+                    }}
+                    onNodeRename={(id: string, label: string) => {
+                      let currentData = graphData;
+                      if (graphRef.current) {
+                        currentData = graphRef.current.getFreshData();
+                      }
+                      const newNodes = currentData.nodes.map((n) =>
+                        n.id === id ? { ...n, label } : n,
+                      );
+                      const newData = { ...currentData, nodes: newNodes };
+                      setGraphData(newData);
+                      if (sessionStorage.getItem("autoSave") !== "false") {
+                        const newId = saveGraph(newData, currentId);
+                        setCurrentId(newId);
+                      }
+                    }}
+                    isPathMode={isPathMode}
+                    highlightSet={highlightSet}
+                    highlightPath={highlightPath}
+                    onLockChange={(id) => {
+                      setLockedToNodeId(id);
+                      setIsLockEnabled(id !== null);
+                      sessionStorage.setItem("lockCamera", String(id !== null));
+                    }}
+                    activeNodeId={activePage?.id ?? null}
+                  />
+                )}
 
                 {/* Sidebar — overlays the graph */}
                 <Sidebar

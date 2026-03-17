@@ -51,6 +51,7 @@ interface Props {
   onNodeRename?: (id: string, label: string) => void;
   isSplitMode?: boolean;
   onToggleSplitMode?: () => void;
+  onToggleTrue2D?: () => void;
   uiAnimations?: boolean;
   onToggleUiAnimations?: () => void;
   isPathMode?: boolean;
@@ -179,6 +180,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     onNodeRename,
     isSplitMode = false,
     onToggleSplitMode,
+    onToggleTrue2D,
     uiAnimations = true,
     onToggleUiAnimations,
     isPathMode = false,
@@ -2878,6 +2880,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       {/* Top-right controls */}
       <div className="absolute top-4 right-5 z-40 flex items-center gap-2">
+        {/* True 2D Toggle */}
+        <button
+          onClick={onToggleTrue2D}
+          title="Switch to True 2D"
+          className="flex items-center justify-center h-8 px-2.5 rounded-md border text-[10px] font-bold tracking-widest transition-all duration-200 backdrop-blur-md border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+        >
+          TRUE 2D
+        </button>
+
         {/* Split Mode Toggle */}
         <button
           onClick={onToggleSplitMode}
@@ -2902,7 +2913,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           </svg>
         </button>
 
-        {/* 2D / 3D toggle */}
+        {/* Legacy 2D / 3D toggle (Three.js flatten mode) */}
         <button
           onClick={() => {
             const next = !is2DRef.current;
@@ -2921,13 +2932,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
               snapshot3DRef.current = snap;
               savedSphRef.current = { ...sphRef.current };
 
-              // ← Add this: immediately zero out Z so nodes are truly flat from frame 1
               simNodesRef.current.forEach((n) => {
                 n.z = 0;
                 n.vz = 0;
               });
 
-              // Bring camera in close — compute tight fit based on graph spread (not done yet)
               sphRef.current.phi = Math.PI / 2;
               sphRef.current.radius = 300;
             } else {
@@ -2951,8 +2960,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           }}
           title={
             is2D
-              ? "Switch to 3D (tip: use hierarchy button in controls menu)"
-              : "Switch to 2D (tip: use hierarchy button in controls menu)"
+              ? "Switch to 3D (legacy flatten mode)"
+              : "Switch to legacy 2D flatten mode"
           }
           className={`flex items-center justify-center h-8 px-2.5 rounded-md border text-[10px] font-bold tracking-widest transition-all duration-200 backdrop-blur-md ${
             is2D
