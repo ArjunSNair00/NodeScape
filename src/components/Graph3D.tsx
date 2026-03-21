@@ -1370,8 +1370,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         } else {
           // Empty space → start marquee
           if (activeMM !== "none") {
-            marqueeStartRef.current = { x: e.clientX, y: e.clientY };
-            marqueePathRef.current = [{ x: e.clientX, y: e.clientY }];
+            const rect = canvas.getBoundingClientRect(); // Get canvas rect for local coordinate translation
+            const lx = e.clientX - rect.left; // Subtract offset to get local X
+            const ly = e.clientY - rect.top; // Subtract offset to get local Y
+
+            marqueeStartRef.current = { x: lx, y: ly }; // Use local coords for start
+            marqueePathRef.current = [{ x: lx, y: ly }]; // Use local coords for path
 
             if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey)
               selectedNodeIdsRef.current.clear();
@@ -1379,18 +1383,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             if (activeMM === "rect") {
               if (marqueeRectRef.current) {
                 marqueeRectRef.current.classList.remove("hidden");
-                marqueeRectRef.current.setAttribute("x", String(e.clientX));
-                marqueeRectRef.current.setAttribute("y", String(e.clientY));
+                marqueeRectRef.current.setAttribute("x", String(lx));
+                marqueeRectRef.current.setAttribute("y", String(ly));
                 marqueeRectRef.current.setAttribute("width", "0");
                 marqueeRectRef.current.setAttribute("height", "0");
               }
             } else if (activeMM === "freehand") {
               if (marqueePolygonRef.current) {
                 marqueePolygonRef.current.classList.remove("hidden");
-                marqueePolygonRef.current.setAttribute(
-                  "points",
-                  `${e.clientX},${e.clientY}`,
-                );
+                marqueePolygonRef.current.setAttribute("points", `${lx},${ly}`);
               }
             }
           }
@@ -1422,7 +1423,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       if (m.down) {
         if (marqueeStartRef.current) {
-          const pt = { x: e.clientX, y: e.clientY };
+          const rect = canvas.getBoundingClientRect(); // Get canvas rect for local translation
+          const lx = e.clientX - rect.left; // Convert to local X
+          const ly = e.clientY - rect.top; // Convert to local Y
+          const pt = { x: lx, y: ly };
           marqueePathRef.current.push(pt);
 
           if (activeMarqueeModeRef.current === "rect") {
@@ -1651,6 +1655,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       if (marqueeStartRef.current) {
         // Finish Marquee
         const path = marqueePathRef.current;
+        const start = marqueeStartRef.current;
         marqueeStartRef.current = null;
 
         if (marqueeRectRef.current)
@@ -1672,10 +1677,12 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             boundMaxY = -Infinity;
 
           if (activeMarqueeModeRef.current === "rect") {
-            boundMinX = Math.min(m.start.x, e.clientX);
-            boundMaxX = Math.max(m.start.x, e.clientX);
-            boundMinY = Math.min(m.start.y, e.clientY);
-            boundMaxY = Math.max(m.start.y, e.clientY);
+            const lx = e.clientX - rect.left; // Convert current mouse to local X
+            const ly = e.clientY - rect.top; // Convert current mouse to local Y
+            boundMinX = Math.min(start.x, lx);
+            boundMaxX = Math.max(start.x, lx);
+            boundMinY = Math.min(start.y, ly);
+            boundMaxY = Math.max(start.y, ly);
           }
 
           const pointInPoly = (px: number, py: number) => {
@@ -1703,8 +1710,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             v.set(sn.x, sn.y, sn.z);
             v.project(cam);
 
-            const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
-            const sy = (-(v.y * 0.5) + 0.5) * rect.height + rect.top;
+            const sx = (v.x * 0.5 + 0.5) * rect.width; // Project to local X (no viewport offset)
+            const sy = (-(v.y * 0.5) + 0.5) * rect.height; // Project to local Y (no viewport offset)
 
             let isInside = false;
 
