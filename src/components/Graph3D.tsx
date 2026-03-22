@@ -1669,19 +1669,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             isPathHideMode
           );
         } else {
-          setHighlighted(
+          // Always use the combined function so hover layers on top of search highlighting
+          hovObjRef.current = setHighlightedWithHover(
             highlightSet,
-            nodeObjsRef.current,
-            linkObjsRef.current,
-            highlightPath,
-            isPathHideMode
-          );
-          // And also call setHoveredNode since setHighlighted doesn't do hover highlighting
-          hovObjRef.current = setHoveredNode(
+            isPathMode ? highlightPath : [],
             hit,
             hovObjRef.current,
             nodeObjsRef.current,
             linkObjsRef.current,
+            isPathMode ? isPathHideMode : false,
           );
         }
 
@@ -2423,6 +2419,73 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       removeNodes(ids) {
         engineRef.current?.removeNodes(ids);
+      },
+
+      triggerGrowExisting() {
+        const engine = engineRef.current;
+        if (!engine) return;
+
+        // Capture current graph state
+        const data = engine.getGraphData();
+        if (data.nodes.length === 0) return;
+
+        // BFS ordering from root (most-connected node)
+        const nodes = data.nodes;
+        const root = [...nodes].sort(
+          (a, b) => b.connections.length - a.connections.length,
+        )[0];
+        const visited = new Set<string>();
+        const queue = [root.id];
+        const ordered: typeof nodes = [];
+        visited.add(root.id);
+
+        while (queue.length > 0) {
+          const id = queue.shift()!;
+          const node = nodes.find((n) => n.id === id);
+          if (!node) continue;
+          ordered.push(node);
+          for (const cid of node.connections) {
+            if (!visited.has(cid) && nodes.find((n) => n.id === cid)) {
+              visited.add(cid);
+              queue.push(cid);
+            }
+          }
+        }
+        // Add any disconnected nodes
+        for (const n of nodes) {
+          if (!visited.has(n.id)) ordered.push(n);
+        }
+
+        // Build edges list from ordered nodes
+        const edges: [string, string][] = [];
+        const seen = new Set<string>();
+        for (const n of ordered) {
+          for (const cid of n.connections) {
+            const key = [n.id, cid].sort().join(":");
+            if (!seen.has(key)) {
+              seen.add(key);
+              edges.push([n.id, cid]);
+            }
+          }
+        }
+
+        // Clear and reload with empty graph
+        engine.load({ title: data.title, nodes: [] });
+
+        // Re-add nodes one by one with delays
+        let i = 0;
+        const addNext = () => {
+          if (i >= ordered.length) return;
+          engine.appendNodes({
+            title: data.title,
+            nodes: [ordered[i]],
+          });
+          i++;
+          if (i < ordered.length) {
+            setTimeout(addNext, 250);
+          }
+        };
+        addNext();
       },
 
       triggerSaveToast() {

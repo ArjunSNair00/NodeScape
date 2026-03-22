@@ -166,6 +166,17 @@ export default function App() {
       dataToSave = graph2DRef.current.getFreshData();
     } else if (graphRef.current) {
       dataToSave = graphRef.current.getFreshData();
+      // Preserve existing position2d from the current graphData
+      const pos2dMap = new Map(
+        graphData.nodes.map((n) => [n.id, n.position2d]),
+      );
+      dataToSave = {
+        ...dataToSave,
+        nodes: dataToSave.nodes.map((n) => ({
+          ...n,
+          position2d: pos2dMap.get(n.id) ?? n.position2d,
+        })),
+      };
     }
     const id = saveGraph(dataToSave, currentId);
     setCurrentId(id);

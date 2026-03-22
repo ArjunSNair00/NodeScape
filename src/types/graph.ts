@@ -71,6 +71,7 @@ export interface LinkObj {
   target: SimNode;
   animProgress?: number;
   arrowMesh?: THREE.Mesh;
+  arrowMesh2?: THREE.Mesh;
 }
 
 export interface Spherical {
@@ -109,4 +110,5 @@ export interface GraphHandle {
   appendNodes: (data: GraphData) => void;
   updateNodes: (nodes: Partial<NodeData>[]) => void;
   removeNodes: (ids: string[]) => void;
+  triggerGrowExisting: () => void;
 }

@@ -75,3 +75,8 @@
   .text-accent { color: var(--accent) !important; }
   .text-accent2{ color: var(--accent2) !important; }
 }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}

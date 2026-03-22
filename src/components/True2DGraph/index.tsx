@@ -107,6 +107,30 @@ function getPrimaryPathDirection(
   return null;
 }
 
+function isBidirectionalEdge(
+  a: string,
+  b: string,
+  path: string[],
+): boolean {
+  let ab = false;
+  let ba = false;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (path[i] === a && path[i + 1] === b) ab = true;
+    if (path[i] === b && path[i + 1] === a) ba = true;
+  }
+  return ab && ba;
+}
+
+function isVisitedEdge(
+  sourceId: string,
+  targetId: string,
+  path: string[],
+): boolean {
+  const si = path.indexOf(sourceId);
+  const ti = path.indexOf(targetId);
+  return si !== -1 && ti !== -1 && Math.abs(si - ti) === 1;
+}
+
 function drawArrowHead(
   graphics: Graphics,
   fromX: number,
@@ -230,9 +254,11 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     new Map(),
   );
 
-  const [physicsOn, setPhysicsOn] = useState(
-    graphData.nodes.length <= PHYSICS_BIG_GRAPH_THRESHOLD,
-  );
+  const [physicsOn, setPhysicsOn] = useState(() => {
+    const saved = sessionStorage.getItem("true2DPhysics");
+    if (saved !== null) return saved === "true";
+    return graphData.nodes.length <= PHYSICS_BIG_GRAPH_THRESHOLD;
+  });
   const [layoutAlgorithm, setLayoutAlgorithm] =
     useState<LayoutAlgorithm>("force");
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -293,8 +319,10 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
   const fitToViewRef = useRef<() => void>(() => {});
   const physicsOnRef = useRef(physicsOn);
   const lockedNodeIdRef = useRef<string | null>(null);
+  const lockDisengagedUntilReClick = useRef(false);
 
   const viewportRef = useRef({ x: 0, y: 0, scale: 1 });
+  const targetViewportRef = useRef<{ x: number; y: number } | null>(null);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ mx: 0, my: 0, vx: 0, vy: 0 });
   const draggingNodeRef = useRef<Node2D | null>(null);
@@ -345,18 +373,32 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     if (!world || !edgesLayer) return;
 
     const lockedNodeId = lockedNodeIdRef.current;
-    if (app && lockedNodeId) {
+    if (app && lockedNodeId && !lockDisengagedUntilReClick.current && !isPanningRef.current) {
       const lockedNode = graphRef.current.nodeMap.get(lockedNodeId);
       if (lockedNode) {
-        viewportRef.current.x =
+        const targetX =
           app.renderer.width / 2 - lockedNode.x * viewportRef.current.scale;
-        viewportRef.current.y =
+        const targetY =
           app.renderer.height / 2 - lockedNode.y * viewportRef.current.scale;
+        viewportRef.current.x += (targetX - viewportRef.current.x) * 0.12;
+        viewportRef.current.y += (targetY - viewportRef.current.y) * 0.12;
+      }
+    } else if (targetViewportRef.current && !isPanningRef.current && !lockDisengagedUntilReClick.current) {
+      const t = targetViewportRef.current;
+      viewportRef.current.x += (t.x - viewportRef.current.x) * 0.12;
+      viewportRef.current.y += (t.y - viewportRef.current.y) * 0.12;
+      if (
+        Math.abs(t.x - viewportRef.current.x) < 0.5 &&
+        Math.abs(t.y - viewportRef.current.y) < 0.5
+      ) {
+        viewportRef.current.x = t.x;
+        viewportRef.current.y = t.y;
+        targetViewportRef.current = null;
       }
     }
 
-    const focusConnected = hoveredNodeId
-      ? findConnectedSet(hoveredNodeId)
+    const focusConnected = hoveredNodeIdRef.current
+      ? findConnectedSet(hoveredNodeIdRef.current)
       : externalHoverNodeId
         ? findConnectedSet(externalHoverNodeId)
         : activeNodeId
@@ -393,16 +435,24 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         if (isPrimary) {
           alpha = 1.0;
           width = 2.2;
+        } else if (inConnected || (focusConnected != null && (focusConnected.has(e.a.id) || focusConnected.has(e.b.id)))) {
+          // Hover/focus highlights edges connected to hovered node
+          isDashed = true;
+          alpha = 0.6;
+          width = 1.5;
         } else if (highlightSet.has(e.a.id) || highlightSet.has(e.b.id)) {
           isDashed = true;
           alpha = 0.5;
           width = 1.25;
         } else {
-          alpha = isPathHideMode ? 0.0 : 0.04;
-          width = 1.25;
+          alpha = isPathHideMode ? 0.0 : 0.1;
+          width = 1.0;
         }
       } else {
-        width = inPath ? 2.2 : 1.25;
+        width = inPath ? 2.2 : inConnected ? 2.0 : 1.25;
+        if (inConnected) {
+          alpha = 1.0;
+        }
       }
 
       g.clear();
@@ -415,22 +465,38 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         g.lineTo(e.b.x, e.b.y);
       }
 
-      if (isPathMode && isPrimary) {
-        const dir = getPrimaryPathDirection(e.a.id, e.b.id, highlightPath);
-        if (dir) {
-          const from = dir.fromId === e.a.id ? e.a : e.b;
-          const to = dir.toId === e.a.id ? e.a : e.b;
+      if (isPathMode && (isPrimary || (inPath && isVisitedEdge(e.a.id, e.b.id, highlightPath)))) {
+        const bidir = isBidirectionalEdge(e.a.id, e.b.id, highlightPath);
 
-          const dx = to.x - from.x;
-          const dy = to.y - from.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const ux = dx / len;
-          const uy = dy / len;
+        if (bidir) {
+          // Bidirectional: draw arrows at both ends pointing toward each other
+          // Arrow A → B
+          const dx1 = e.b.x - e.a.x;
+          const dy1 = e.b.y - e.a.y;
+          const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+          const tipX1 = e.b.x - (dx1 / len1) * (e.b.radius + 2);
+          const tipY1 = e.b.y - (dy1 / len1) * (e.b.radius + 2);
+          drawArrowHead(g, e.a.x, e.a.y, tipX1, tipY1, colors.edge, alpha, 10);
 
-          const tipX = to.x - ux * (to.radius + 2);
-          const tipY = to.y - uy * (to.radius + 2);
-
-          drawArrowHead(g, from.x, from.y, tipX, tipY, colors.edge, alpha, 10);
+          // Arrow B → A
+          const dx2 = e.a.x - e.b.x;
+          const dy2 = e.a.y - e.b.y;
+          const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+          const tipX2 = e.a.x - (dx2 / len2) * (e.a.radius + 2);
+          const tipY2 = e.a.y - (dy2 / len2) * (e.a.radius + 2);
+          drawArrowHead(g, e.b.x, e.b.y, tipX2, tipY2, colors.edge, alpha * 0.85, 8);
+        } else {
+          const dir = getPrimaryPathDirection(e.a.id, e.b.id, highlightPath);
+          if (dir) {
+            const from = dir.fromId === e.a.id ? e.a : e.b;
+            const to = dir.toId === e.a.id ? e.a : e.b;
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const tipX = to.x - (dx / len) * (to.radius + 2);
+            const tipY = to.y - (dy / len) * (to.radius + 2);
+            drawArrowHead(g, from.x, from.y, tipX, tipY, colors.edge, alpha, 10);
+          }
         }
       }
     });
@@ -441,7 +507,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       if (!gfx || !label) return;
 
       const isSelected = activeNodeId === n.id || selectedNodeIdsRef.current.has(n.id);
-      const isHovered = hoveredNodeId === n.id || externalHoverNodeId === n.id;
+      const isHovered = hoveredNodeIdRef.current === n.id || externalHoverNodeId === n.id;
       const inPath = highlightSet.has(n.id);
       const inConnected = focusConnected?.has(n.id) ?? false;
 
@@ -458,36 +524,48 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
               : 0.8;
 
       if (isPathMode && hasEmphasis) {
-        if (inPath) {
+        if (isHovered) {
+          alpha = 1.0;
+          ringAlpha = 0.6;
+        } else if (inPath) {
           alpha = 1.0;
           ringAlpha = 0.4;
         } else if (inConnected) {
           alpha = 0.85;
           ringAlpha = 0.2;
         } else {
-          alpha = isPathHideMode ? 0.0 : 0.12;
-          ringAlpha = isPathHideMode ? 0.0 : 0.05;
+          alpha = isPathHideMode ? 0.0 : 0.25;
+          ringAlpha = isPathHideMode ? 0.0 : 0.08;
         }
       }
 
       gfx.clear();
-      gfx.beginFill(n.color, alpha);
+
+      // Selected node: accent-colored outer ring
+      if (isSelected) {
+        gfx.beginFill(0x7c6af7, 0.45);
+        gfx.drawCircle(0, 0, n.radius * 3.2);
+        gfx.endFill();
+      }
+
+      gfx.beginFill(n.color, isSelected ? Math.min(alpha * 1.2, 1) : alpha);
       gfx.drawCircle(0, 0, n.radius);
       gfx.endFill();
 
       gfx.beginFill(n.color, ringAlpha);
-      gfx.drawCircle(0, 0, n.radius * (isSelected ? 2.4 : 2.0));
+      gfx.drawCircle(0, 0, n.radius * (isSelected ? 3.0 : 2.0));
       gfx.endFill();
 
       // Breathing effect for selected node
       let currentScale = 1.0;
       if (isSelected) {
         const time = Date.now() / 1000;
-        const breath = 0.5 + 0.2 * Math.sin(time * 4.0);
-        ringAlpha = breath;
-        currentScale = 1.0 + 0.05 * Math.sin(time * 4.0);
+        ringAlpha = 0.9 + 0.1 * Math.sin(time * 3.0);
+        currentScale = 1.0 + 0.08 * Math.sin(time * 3.0);
+        gfx.scale.set(currentScale);
+      } else {
+        gfx.scale.set(1.0);
       }
-      gfx.scale.set(currentScale);
 
       gfx.x = n.x;
       gfx.y = n.y;
@@ -581,16 +659,16 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     const app = appRef.current;
     const node = graphRef.current.nodeMap.get(nodeId);
     if (!app || !node) return;
-    viewportRef.current.x =
-      app.renderer.width / 2 - node.x * viewportRef.current.scale;
-    viewportRef.current.y =
-      app.renderer.height / 2 - node.y * viewportRef.current.scale;
-    renderSceneRef.current();
+    targetViewportRef.current = {
+      x: app.renderer.width / 2 - node.x * viewportRef.current.scale,
+      y: app.renderer.height / 2 - node.y * viewportRef.current.scale,
+    };
   }, []);
 
   const beginPanFromEvent = useCallback((e: FederatedPointerEvent) => {
     const native = e.nativeEvent as PointerEvent;
     isPanningRef.current = true;
+    lockDisengagedUntilReClick.current = true;
     panStartRef.current = {
       mx: native.clientX,
       my: native.clientY,
@@ -609,7 +687,26 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
   useEffect(() => {
     physicsOnRef.current = physicsOn;
+    sessionStorage.setItem("true2DPhysics", String(physicsOn));
   }, [physicsOn]);
+
+  // Auto-save 2D positions when switching back to 3D mode
+  useEffect(() => {
+    return () => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      const byId = new Map(graph.nodes.map((n) => [n.id, n] as const));
+      const data: GraphData = {
+        ...graphData,
+        nodes: graphData.nodes.map((n) => {
+          const live = byId.get(n.id);
+          if (!live) return n;
+          return { ...n, position2d: { x: live.x, y: live.y } };
+        }),
+      };
+      onGraphChange(data);
+    };
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1274,10 +1371,12 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       },
       lockToNode(nodeId: string) {
         lockedNodeIdRef.current = nodeId;
+        lockDisengagedUntilReClick.current = false;
         focusNode(nodeId);
       },
       unlockCamera() {
         lockedNodeIdRef.current = null;
+        lockDisengagedUntilReClick.current = false;
       },
     }),
     [focusNode, graphData],
@@ -1443,9 +1542,10 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
                 strokeLinejoin="round"
               >
                 <path d="M16 11V7a4 4 0 00-8 0v4l-2 3v2h6v6l2 2 2-2v-6h6v-2l-2-3z" />
-              </svg>
-            </button>
-            <button
+          </svg>
+        </button>
+
+        <button
               onClick={() => setLeftSidebarOpen(false)}
               className="text-muted hover:text-accent p-1 transition-colors"
             >
@@ -1543,6 +1643,62 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
             <line x1="12" y1="3" x2="12" y2="21" />
           </svg>
         </button>
+
+        {/* Marquee Select Dropdown */}
+        <div className="relative flex items-center h-8">
+          <button
+            onClick={() => {
+              setMarqueeMode((m) => (m === "none" ? "rect" : "none"));
+              if (marqueeMode !== "none") selectedNodeIdsRef.current.clear();
+              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
+            }}
+            title={`Marquee Tool: ${marqueeMode === "none" ? "OFF" : marqueeMode.toUpperCase()}`}
+            className={`flex items-center justify-center w-8 h-8 rounded-l-md border transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== "none"
+                ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+              <rect x="3" y="3" width="18" height="18" strokeDasharray="3 3" />
+            </svg>
+          </button>
+          <button
+            onClick={() => {
+              setMarqueeMenuOpen((m) => !m);
+              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
+            }}
+            className={`flex items-center justify-center w-4 h-8 rounded-r-md border-y border-r transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== "none"
+                ? "border-accent text-accent bg-accent/20"
+                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <AnimatePresence>
+            {marqueeMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                className="absolute top-10 right-0 z-50 w-32 py-1 rounded-xl border border-border2 shadow-xl backdrop-blur-xl"
+                style={{ background: isDark ? "rgba(30,30,30,0.85)" : "rgba(255,255,255,0.85)" }}
+              >
+                <div className="px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted2 font-bold mb-1 border-b border-border/40">Mode</div>
+                {[{ id: "rect", label: "Rect" }, { id: "freehand", label: "Free" }].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { setMarqueeMode(opt.id as MarqueeMode); setMarqueeMenuOpen(false); }}
+                    className={`w-full px-3 py-1.5 text-left text-[10px] font-medium tracking-wide flex items-center justify-between hover:bg-accent/10 transition-colors ${marqueeMode === opt.id ? "text-accent" : "text-text"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <button
           onClick={handleSaveClick}
@@ -1852,69 +2008,6 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           className="text-[10px] tracking-widest px-2 py-1 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-all"
         >
           FIT
-        </button>
-
-        {/* Marquee Select Dropdown */}
-        <div className="relative flex items-center h-6">
-          <button
-            onClick={() => {
-              setMarqueeMode((m) => (m === "none" ? "rect" : "none"));
-              if (marqueeMode !== "none") selectedNodeIdsRef.current.clear();
-              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
-            }}
-            title={`Marquee Tool: ${marqueeMode === "none" ? "OFF" : marqueeMode.toUpperCase()}`}
-            className={`flex items-center justify-center w-7 h-6 rounded-l-md border-y border-l transition-all duration-200 backdrop-blur-md ${
-              marqueeMode !== "none"
-                ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
-                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
-            }`}
-          >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
-              <rect x="3" y="3" width="18" height="18" strokeDasharray="3 3" />
-            </svg>
-          </button>
-          <button
-            onClick={() => {
-              setMarqueeMenuOpen((m) => !m);
-              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
-            }}
-            className={`flex items-center justify-center w-4 h-6 rounded-r-md border-y border-r transition-all duration-200 backdrop-blur-md ${
-              marqueeMode !== "none"
-                ? "border-accent text-accent bg-accent/20"
-                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
-            }`}
-          >
-            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          <AnimatePresence>
-            {marqueeMenuOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }}
-                className="absolute bottom-8 left-0 z-50 w-32 py-1 rounded-xl border border-border2 shadow-xl backdrop-blur-xl"
-                style={{ background: isDark ? "rgba(30,30,30,0.85)" : "rgba(255,255,255,0.85)" }}
-              >
-                <div className="px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted2 font-bold mb-1 border-b border-border/40">Mode</div>
-                {[{ id: "rect", label: "Rect" }, { id: "freehand", label: "Free" }].map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => { setMarqueeMode(opt.id as MarqueeMode); setMarqueeMenuOpen(false); }}
-                    className={`w-full px-3 py-1.5 text-left text-[10px] font-medium tracking-wide flex items-center justify-between hover:bg-accent/10 transition-colors ${marqueeMode === opt.id ? "text-accent" : "text-text"}`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <button
-          onClick={save2DLayout}
-          className="text-[10px] tracking-widest px-2 py-1 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-all"
-        >
-          SAVE 2D
         </button>
       </div>
 

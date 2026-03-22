@@ -179,7 +179,6 @@ export function buildSceneObjects(
 
     // Path arrow
     const arrowGeo = new THREE.ConeGeometry(5, 12, 12);
-    // Rotate geometry once so that it points along the Z axis (Three.js Cone points along +Y initially)
     arrowGeo.rotateX(Math.PI / 2);
     const arrowMat = new THREE.MeshBasicMaterial({
       color,
@@ -190,6 +189,18 @@ export function buildSceneObjects(
     const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
     scene.add(arrowMesh);
 
+    // Second arrow for bidirectional edges
+    const arrowGeo2 = new THREE.ConeGeometry(4, 10, 12);
+    arrowGeo2.rotateX(Math.PI / 2);
+    const arrowMat2 = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      visible: false,
+    });
+    const arrowMesh2 = new THREE.Mesh(arrowGeo2, arrowMat2);
+    scene.add(arrowMesh2);
+
     scene.add(line);
     linkObjs.push({
       line,
@@ -198,6 +209,7 @@ export function buildSceneObjects(
       source: l.source,
       target: l.target,
       arrowMesh,
+      arrowMesh2,
     });
   });
 
@@ -224,6 +236,11 @@ export function clearSceneObjects(
       scene.remove(o.arrowMesh);
       o.arrowMesh.geometry.dispose();
       (o.arrowMesh.material as THREE.Material).dispose();
+    }
+    if (o.arrowMesh2) {
+      scene.remove(o.arrowMesh2);
+      o.arrowMesh2.geometry.dispose();
+      (o.arrowMesh2.material as THREE.Material).dispose();
     }
   });
 }
@@ -370,36 +387,123 @@ export function syncPositions(
     pos.needsUpdate = true;
 
     // Update arrows
+    const bothVisited =
+      isPathMode &&
+      highlightPath.length > 0 &&
+      highlightPath.includes(lo.source.id) &&
+      highlightPath.includes(lo.target.id) &&
+      isVisitedEdge(lo.source.id, lo.target.id, highlightPath);
+
     if (lo.arrowMesh) {
-      const isPrimary =
-        isPathMode &&
-        highlightPath.length > 0 &&
-        isPrimaryPathEdge(lo.source.id, lo.target.id, highlightPath);
+      if (bothVisited) {
+        const bidir = isBidirectionalEdge(lo.source.id, lo.target.id, highlightPath);
 
-      if (isPrimary) {
-        const dir = getPrimaryPathDirection(lo.source.id, lo.target.id, highlightPath);
-        if (dir) {
-          const from = dir.fromId === lo.source.id ? lo.source : lo.target;
-          const to = dir.toId === lo.source.id ? lo.source : lo.target;
+        if (bidir) {
+          // Forward arrow — first consecutive occurrence in the path
+          let fwdFrom = "";
+          let fwdTo = "";
+          for (let i = 0; i < highlightPath.length - 1; i++) {
+            const a = highlightPath[i];
+            const b = highlightPath[i + 1];
+            if (
+              (a === lo.source.id && b === lo.target.id) ||
+              (a === lo.target.id && b === lo.source.id)
+            ) {
+              fwdFrom = a;
+              fwdTo = b;
+              break;
+            }
+          }
+          if (fwdFrom && fwdTo) {
+            const from = fwdFrom === lo.source.id ? lo.source : lo.target;
+            const to = fwdTo === lo.source.id ? lo.source : lo.target;
+            const toVec = new THREE.Vector3(to.x, to.y, to.z);
+            const fromVec = new THREE.Vector3(from.x, from.y, from.z);
+            const unitEdge = new THREE.Vector3().subVectors(toVec, fromVec).normalize();
+            const arrowPos = toVec.clone().sub(unitEdge.multiplyScalar(to.radius + 6));
+            lo.arrowMesh.position.copy(arrowPos);
+            lo.arrowMesh.lookAt(toVec);
+            lo.arrowMesh.visible = true;
+            const mat1 = lo.arrowMesh.material as THREE.MeshBasicMaterial;
+            mat1.visible = true;
+            mat1.opacity = 0.85;
+          }
 
-          const toVec = new THREE.Vector3(to.x, to.y, to.z);
-          const fromVec = new THREE.Vector3(from.x, from.y, from.z);
-          const edgeVec = new THREE.Vector3().subVectors(toVec, fromVec);
-          const length = edgeVec.length();
-          const unitEdge = edgeVec.clone().normalize();
-
-          // Position arrow slightly offset from the target node surface
-          const offset = to.radius + 6;
-          const arrowPos = toVec.clone().sub(unitEdge.clone().multiplyScalar(offset));
-
-          lo.arrowMesh.position.copy(arrowPos);
-          lo.arrowMesh.lookAt(toVec);
-          lo.arrowMesh.visible = true;
-          (lo.arrowMesh.material as THREE.MeshBasicMaterial).opacity = 1;
+          // Reverse arrow — find the NEXT occurrence of this edge (skip the first)
+          if (lo.arrowMesh2) {
+            let revFrom = "";
+            let revTo = "";
+            let foundFirst = false;
+            for (let i = 0; i < highlightPath.length - 1; i++) {
+              const a = highlightPath[i];
+              const b = highlightPath[i + 1];
+              const isThisEdge =
+                (a === lo.source.id && b === lo.target.id) ||
+                (a === lo.target.id && b === lo.source.id);
+              if (!isThisEdge) continue;
+              if (!foundFirst) {
+                foundFirst = true;
+                continue;
+              }
+              revFrom = a;
+              revTo = b;
+              break;
+            }
+            if (revFrom && revTo) {
+              const from = revFrom === lo.source.id ? lo.source : lo.target;
+              const to = revTo === lo.source.id ? lo.source : lo.target;
+              const toVec = new THREE.Vector3(to.x, to.y, to.z);
+              const fromVec = new THREE.Vector3(from.x, from.y, from.z);
+              const unitEdge = new THREE.Vector3().subVectors(toVec, fromVec).normalize();
+              const arrowPos = toVec.clone().sub(unitEdge.multiplyScalar(to.radius + 6));
+              lo.arrowMesh2.position.copy(arrowPos);
+              lo.arrowMesh2.lookAt(toVec);
+              lo.arrowMesh2.visible = true;
+              const mat2 = lo.arrowMesh2.material as THREE.MeshBasicMaterial;
+              mat2.visible = true;
+              mat2.opacity = 0.7;
+            } else {
+              lo.arrowMesh2.visible = false;
+              const mat2 = lo.arrowMesh2.material as THREE.MeshBasicMaterial;
+              mat2.visible = false;
+              mat2.opacity = 0;
+            }
+          }
+        } else {
+          // Single direction arrow
+          const dir = getPrimaryPathDirection(lo.source.id, lo.target.id, highlightPath);
+          if (dir) {
+            const from = dir.fromId === lo.source.id ? lo.source : lo.target;
+            const to = dir.toId === lo.source.id ? lo.source : lo.target;
+            const toVec = new THREE.Vector3(to.x, to.y, to.z);
+            const fromVec = new THREE.Vector3(from.x, from.y, from.z);
+            const unitEdge = new THREE.Vector3().subVectors(toVec, fromVec).normalize();
+            const arrowPos = toVec.clone().sub(unitEdge.multiplyScalar(to.radius + 6));
+            lo.arrowMesh.position.copy(arrowPos);
+            lo.arrowMesh.lookAt(toVec);
+            lo.arrowMesh.visible = true;
+            const mat1 = lo.arrowMesh.material as THREE.MeshBasicMaterial;
+            mat1.visible = true;
+            mat1.opacity = 1;
+          }
+          if (lo.arrowMesh2) {
+            lo.arrowMesh2.visible = false;
+            const mat2 = lo.arrowMesh2.material as THREE.MeshBasicMaterial;
+            mat2.visible = false;
+            mat2.opacity = 0;
+          }
         }
       } else {
         lo.arrowMesh.visible = false;
-        (lo.arrowMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+        const mat1 = lo.arrowMesh.material as THREE.MeshBasicMaterial;
+        mat1.visible = false;
+        mat1.opacity = 0;
+        if (lo.arrowMesh2) {
+          lo.arrowMesh2.visible = false;
+          const mat2 = lo.arrowMesh2.material as THREE.MeshBasicMaterial;
+          mat2.visible = false;
+          mat2.opacity = 0;
+        }
       }
     }
   });
@@ -490,6 +594,30 @@ function getPrimaryPathDirection(
     }
   }
   return null;
+}
+
+function isBidirectionalEdge(
+  a: string,
+  b: string,
+  path: string[],
+): boolean {
+  let ab = false;
+  let ba = false;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (path[i] === a && path[i + 1] === b) ab = true;
+    if (path[i] === b && path[i + 1] === a) ba = true;
+  }
+  return ab && ba;
+}
+
+function isVisitedEdge(
+  sourceId: string,
+  targetId: string,
+  path: string[],
+): boolean {
+  const si = path.indexOf(sourceId);
+  const ti = path.indexOf(targetId);
+  return si !== -1 && ti !== -1 && Math.abs(si - ti) === 1;
 }
 
 export function setHighlighted(
@@ -663,8 +791,12 @@ export function setHighlightedWithHover(
       const connToHover =
         lo.source.id === hoverHit.node.id || lo.target.id === hoverHit.node.id;
       if (connToHover && lo.dashedMat) {
-        lo.line.material = lo.dashedMat;
-        lo.dashedMat.opacity = 0.85;
+        const hoverIsPrimary =
+          sH && tH && isPrimaryPathEdge(lo.source.id, lo.target.id, highlightPath);
+        if (!hoverIsPrimary) {
+          lo.line.material = lo.dashedMat;
+          lo.dashedMat.opacity = 0.85;
+        }
       }
     }
   });

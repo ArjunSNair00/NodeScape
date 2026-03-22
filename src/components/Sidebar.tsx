@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GraphData, GraphHandle } from "../types/graph";
 import { AI_PROMPT, EXAMPLE_TOPICS } from "../data/defaultGraph";
 import { parseGraphJSON, tryRepairAndParse } from "../lib/validateGraph";
+import { parsePDF, parseTextFile, chunkText } from "../lib/parseFile";
 import {
   getSupabaseAccessToken,
   getSupabaseUser,
@@ -634,6 +635,25 @@ function ControlsTab({
         </ActionBtn>
       </BtnRow>
 
+      <BtnRow label="Replay Growth">
+        <ActionBtn
+          onClick={() => graphRef.current?.triggerGrowExisting()}
+          wide
+        >
+          <svg
+            className="w-3 h-3"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M2 6a4 4 0 017-2.8M10 6a4 4 0 01-7 2.8" strokeLinecap="round" />
+            <path d="M10 2v3h-3M2 10v-3h3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          REPLAY
+        </ActionBtn>
+      </BtnRow>
+
       <BtnRow label="Expand Instead of Replace">
         <ActionBtn
           onClick={() => setExpandReplace(!expandReplace)}
@@ -1133,6 +1153,8 @@ const AI_FUNCTION_URL =
   "https://trxpofoucgdytlhovrkq.supabase.co/functions/v1/ai";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL_FAST = "llama-3.1-8b-instant";
+const LONG_PROMPT_THRESHOLD = 200;
 
 const SYSTEM_PROMPT = `You are a knowledge-graph JSON generator. The user gives a topic (and optionally extra instructions like node count). You MUST reply with a single, valid JSON object — no markdown, no explanation, no text outside the JSON.
 
@@ -1155,12 +1177,37 @@ Content rules:
 - every node has at least 2 connections
 - the graph should feel like Obsidian: a web of related ideas`;
 
+const PDF_SYSTEM_PROMPT = `You are a knowledge-graph JSON generator. The user provides PDF/document context along with a topic or prompt. You MUST reply with a single, valid JSON object — no markdown, no explanation, no text outside the JSON.
+
+Schema (follow exactly):
+{"title":"Topic","nodes":[{"id":"snake_case_id","label":"Display Name","icon":"single_emoji","hex":"#hexcolor","category":"core|concept|example|resource|layer","content":"HTML string with <strong> tags. 2-3 paragraphs separated by <br><br>.","connections":["other_id"]}]}
+
+CRITICAL JSON rules:
+- Every string value MUST be enclosed in double quotes
+- Inside strings, escape double quotes as \\" and use <br><br> for line breaks (NO literal newlines inside strings)
+- HTML tags like <strong> and <br> go INSIDE the quoted string values, properly
+- All keys must be double-quoted
+- No trailing commas
+
+Content rules:
+- Base node content on the provided document context — extract key concepts, facts, and relationships
+- 8-14 nodes (unless user says otherwise)
+- connections reference valid ids; bidirectional (list once)
+- distinct hex colors per category; no white/black
+- icons: one relevant emoji per node
+- content: minimum 3 sentences, use <strong> for key terms, separate paragraphs with <br><br>
+- every node has at least 2 connections
+- the graph should feel like Obsidian: a web of related ideas
+- Prioritize information from the document context over general knowledge`;
+
 type AIMode = "generate" | "append" | "update" | "remove";
+type StreamStage = "idle" | "connecting" | "streaming" | "parsing" | "rendering";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   nodeCount?: number;
+  attachment?: string;
 }
 
 function AiChatTab({
@@ -1181,6 +1228,8 @@ function AiChatTab({
   ]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamStage, setStreamStage] = useState<StreamStage>("idle");
+  const [liveNodeCount, setLiveNodeCount] = useState(0);
   const [aiMode, setAiMode] = useState<AIMode>("generate");
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -1190,12 +1239,18 @@ function AiChatTab({
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
   const [authToast, setAuthToast] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<
+    { name: string; content: string; parsing: boolean; error?: string }[]
+  >([]);
+  const [dragOver, setDragOver] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const lastNodeCountRef = useRef<number>(0);
   const manualSignOutRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const parsingRef = useRef(0);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1289,21 +1344,86 @@ function AiChatTab({
     setIsAuthLoading(false);
   };
 
+  const handleFiles = async (fileList: FileList | File[]) => {
+    const accepted = Array.from(fileList).filter((f) =>
+      /\.(pdf|md|txt|text)$/i.test(f.name),
+    );
+    if (accepted.length === 0) return;
+
+    // Add placeholder chips immediately
+    const placeholders = accepted.map((f) => ({
+      name: f.name,
+      content: "",
+      parsing: true,
+    }));
+    setAttachedFiles((prev) => [...prev, ...placeholders]);
+
+    // Parse each file and update by name (avoids stale index bugs)
+    for (const file of accepted) {
+      parsingRef.current++;
+      try {
+        let content: string;
+        if (/\.pdf$/i.test(file.name)) {
+          content = await parsePDF(file);
+        } else {
+          content = await parseTextFile(file);
+        }
+        setAttachedFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name && f.parsing
+              ? { name: file.name, content, parsing: false }
+              : f,
+          ),
+        );
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Failed to parse file";
+        console.error(`[FileAttach] Failed to parse ${file.name}:`, err);
+        setAttachedFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name && f.parsing
+              ? { name: file.name, content: "", parsing: false, error: msg }
+              : f,
+          ),
+        );
+      } finally {
+        parsingRef.current--;
+      }
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const sendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!input.trim() || isStreaming || parsingRef.current > 0) return;
 
     const userText = input.trim();
-    const userMsg: ChatMessage = { role: "user", content: userText };
+    const hasFiles = attachedFiles.some((f) => !f.error && !f.parsing);
+    const fileNames = hasFiles
+      ? attachedFiles
+          .filter((f) => !f.error && !f.parsing)
+          .map((f) => f.name)
+          .join(", ")
+      : undefined;
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: userText,
+      attachment: fileNames,
+    };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsStreaming(true);
+    setStreamStage("connecting");
+    setLiveNodeCount(0);
     lastNodeCountRef.current = 0;
 
     // Add a placeholder assistant message
     const assistantMsg: ChatMessage = {
       role: "assistant",
-      content: "✦ Generating graph…",
+      content: "✦ Connecting…",
       nodeCount: 0,
     };
     setMessages((prev) => [...prev, assistantMsg]);
@@ -1314,7 +1434,7 @@ function AiChatTab({
     const isExpand = sessionStorage.getItem("expandReplace") === "true";
     const actualMode = aiMode === "generate" && isExpand ? "append" : aiMode;
 
-    let contextualPrompt = SYSTEM_PROMPT;
+    let contextualPrompt = hasFiles ? PDF_SYSTEM_PROMPT : SYSTEM_PROMPT;
     if (actualMode === "append") {
       contextualPrompt += `\n\nAPPEND MODE: The user has an existing graph with nodes: ${graphData.nodes.map((n) => n.id).join(", ")}. Generate NEW nodes to append to this graph. You may connect new nodes to the existing node IDs.`;
     } else if (actualMode === "update") {
@@ -1323,177 +1443,275 @@ function AiChatTab({
       contextualPrompt += `\n\nREMOVE MODE: The user has existing nodes: ${JSON.stringify(graphData.nodes.map((n) => ({ id: n.id, label: n.label })))}\nProvide the exact JSON schema containing ONLY the nodes you want to DELETE. (The application will read these IDs and permanently remove them).`;
     }
 
-    let fullBuffer = "";
+    // Chunk all file content
+    let chunks: { fileName: string; text: string }[] = [];
+    if (hasFiles) {
+      const validFiles = attachedFiles.filter((f) => !f.error && !f.parsing);
+      for (const f of validFiles) {
+        const fileChunks = chunkText(f.content);
+        for (const c of fileChunks) {
+          chunks.push({ fileName: f.name, text: c });
+        }
+      }
+      setAttachedFiles([]);
+    }
 
-    try {
-      if (!SUPABASE_ANON_KEY) {
-        throw new Error("Missing VITE_SUPABASE_ANON_KEY in .env");
-      }
+    // Helper: make one streaming API call and return parsed graph data
+    const callChunkAPI = async (
+      systemPrompt: string,
+      message: string,
+      signal: AbortSignal,
+      model: string = GROQ_MODEL,
+    ): Promise<GraphData | null> => {
       const userAccessToken = await getSupabaseAccessToken();
-      console.log("[AI] token present:", !!userAccessToken, "| prefix:", userAccessToken?.slice(0, 20));
-      if (!userAccessToken) {
-        throw new Error("Session expired — please sign out and sign back in.");
-      }
+      if (!userAccessToken) throw new Error("Session expired");
 
       const response = await fetch(AI_FUNCTION_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
+          apikey: SUPABASE_ANON_KEY!,
           Authorization: `Bearer ${userAccessToken}`,
         },
         body: JSON.stringify({
-          model: GROQ_MODEL,
+          model,
           messages: [
-            { role: "system", content: contextualPrompt },
-            { role: "user", content: userText },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message },
           ],
           response_format: { type: "json_object" },
           stream: true,
         }),
-        signal: controller.signal,
+        signal,
       });
 
       if (!response.ok) {
         const errText = await response.text();
         let errData: any = null;
-        try {
-          errData = errText ? JSON.parse(errText) : null;
-        } catch {
-          errData = null;
-        }
+        try { errData = errText ? JSON.parse(errText) : null; } catch { /* */ }
         throw new Error(
-          errData?.error?.message ||
-            errData?.error ||
-            errData?.message ||
-            errText ||
-            `API error ${response.status}`,
+          errData?.error?.message || errData?.error || errData?.message || errText || `API error ${response.status}`,
         );
       }
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error("No response body");
 
+      setStreamStage("streaming");
       const decoder = new TextDecoder();
-      let done = false;
-      let lineBuffer = ""; // accumulate partial SSE lines across read() calls
+      let streamDone = false;
+      let lineBuffer = "";
+      let fullBuffer = "";
 
-      while (!done) {
-        const { value, done: streamDone } = await reader.read();
-        done = streamDone;
+      while (!streamDone) {
+        const { value, done } = await reader.read();
+        streamDone = done;
         if (!value) continue;
 
         lineBuffer += decoder.decode(value, { stream: true });
         const lines = lineBuffer.split("\n");
-        // Keep the last (potentially incomplete) line in the buffer
         lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
           if (!line.trim().startsWith("data:")) continue;
           const jsonStr = line.replace(/^data:\s*/, "").trim();
-          if (jsonStr === "[DONE]") {
-            done = true;
-            break;
-          }
-
+          if (jsonStr === "[DONE]") { streamDone = true; break; }
           try {
             const parsed = JSON.parse(jsonStr);
             const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullBuffer += delta;
-
-              // Throttle incremental graph updates to every 300ms
-              const now = Date.now();
-              if (now - lastUpdateRef.current > 300) {
-                lastUpdateRef.current = now;
-                const { data } = tryRepairAndParse(fullBuffer);
-                if (data && data.nodes.length > lastNodeCountRef.current) {
-                  lastNodeCountRef.current = data.nodes.length;
-
-                  if (actualMode === "generate") {
-                    onGraphChange(data);
-                  } else if (actualMode === "append") {
-                    graphRef.current?.appendNodes(data);
-                    graphRef.current?.updateNodes(data.nodes); // To capture streamed content merges
-                  } else if (actualMode === "update") {
-                    graphRef.current?.updateNodes(data.nodes);
-                  } else if (actualMode === "remove") {
-                    graphRef.current?.removeNodes(data.nodes.map((n) => n.id));
-                  }
-
-                  setMessages((prev) => {
-                    const copy = [...prev];
-                    const last = copy[copy.length - 1];
-                    if (last.role === "assistant") {
-                      copy[copy.length - 1] = {
-                        ...last,
-                        content: `✦ Generating graph… ${data.nodes.length} node${data.nodes.length > 1 ? "s" : ""} so far`,
-                        nodeCount: data.nodes.length,
-                      };
-                    }
-                    return copy;
-                  });
-                }
-              }
-            }
-          } catch {
-            /* ignore malformed SSE lines */
-          }
+            if (delta) fullBuffer += delta;
+          } catch { /* ignore */ }
         }
       }
 
-      // Final parse with the complete buffer — use tryRepairAndParse for robustness
-      const finalResult = tryRepairAndParse(fullBuffer);
-      const data = finalResult.data;
-      const error = finalResult.error || null;
+      setStreamStage("parsing");
+      const result = tryRepairAndParse(fullBuffer);
+      if (result.data) return result.data;
 
-      const handleFinalMutations = (parsedData: GraphData) => {
-        if (actualMode === "generate") {
-          onGraphChange(parsedData);
-        } else if (actualMode === "append") {
-          graphRef.current?.appendNodes(parsedData);
-          graphRef.current?.updateNodes(parsedData.nodes);
-        } else if (actualMode === "update") {
-          graphRef.current?.updateNodes(parsedData.nodes);
-        } else if (actualMode === "remove") {
-          graphRef.current?.removeNodes(parsedData.nodes.map((n) => n.id));
+      const strict = parseGraphJSON(fullBuffer);
+      return strict.data ?? null;
+    };
+
+    // Helper: merge new nodes into accumulator, skip duplicates
+    const mergeGraphs = (
+      accumulator: GraphData,
+      newData: GraphData,
+    ): GraphData => {
+      const existingIds = new Set(accumulator.nodes.map((n) => n.id));
+      const newNodes = newData.nodes.filter((n) => !existingIds.has(n.id));
+      return {
+        ...accumulator,
+        title: accumulator.title || newData.title,
+        nodes: [...accumulator.nodes, ...newNodes],
+      };
+    };
+
+    try {
+      if (!SUPABASE_ANON_KEY) throw new Error("Missing VITE_SUPABASE_ANON_KEY in .env");
+
+      // Helper: grow graph incrementally node-by-node (BFS order)
+      const growGraphIncremental = async (data: GraphData) => {
+        if (!graphRef.current) return;
+
+        // BFS ordering from most-connected node
+        const nodes = data.nodes;
+        const root = [...nodes].sort(
+          (a, b) => b.connections.length - a.connections.length,
+        )[0];
+        const visited = new Set<string>();
+        const queue = [root.id];
+        const ordered: typeof nodes = [];
+        visited.add(root.id);
+        while (queue.length > 0) {
+          const id = queue.shift()!;
+          const node = nodes.find((n) => n.id === id);
+          if (!node) continue;
+          ordered.push(node);
+          for (const cid of node.connections) {
+            if (!visited.has(cid) && nodes.find((n) => n.id === cid)) {
+              visited.add(cid);
+              queue.push(cid);
+            }
+          }
         }
+        for (const n of nodes) {
+          if (!visited.has(n.id)) ordered.push(n);
+        }
+
+        // Clear the graph by loading empty data
+        const freshData = graphRef.current.getFreshData();
+        // Use appendNodes with the full dataset after a direct clear
+        // We clear by removing all existing nodes
+        const existingIds = freshData.nodes.map((n) => n.id);
+        if (existingIds.length > 0) {
+          graphRef.current.removeNodes(existingIds);
+        }
+
+        // Add nodes one by one with BFS ordering
+        for (let i = 0; i < ordered.length; i++) {
+          if (controller.signal.aborted) break;
+          graphRef.current.appendNodes({
+            title: data.title,
+            nodes: [ordered[i]],
+          });
+          setLiveNodeCount(i + 1);
+          if (i < ordered.length - 1) {
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        }
+
+        // Sync React state with the final graph
+        onGraphChange(data);
       };
 
-      // Fallback: try the stricter parseGraphJSON if repair didn't work
-      if (!data) {
-        const strict = parseGraphJSON(fullBuffer);
-        if (strict.data) {
-          handleFinalMutations(strict.data);
+      const animateGrow =
+        sessionStorage.getItem("graphGrowthAnimation") !== "false";
+
+      // Select model: fast model for files or long prompts
+      const useFastModel = hasFiles || userText.length > LONG_PROMPT_THRESHOLD;
+      const model = useFastModel ? GROQ_MODEL_FAST : GROQ_MODEL;
+
+      if (!hasFiles || chunks.length === 0) {
+        // ── No files: single streaming call (original behavior) ──
+        const data = await callChunkAPI(contextualPrompt, userText, controller.signal, model);
+        if (data) {
+          if (actualMode === "generate") {
+            if (animateGrow) {
+              await growGraphIncremental(data);
+            } else {
+              onGraphChange(data);
+            }
+          } else if (actualMode === "append") { graphRef.current?.appendNodes(data); graphRef.current?.updateNodes(data.nodes); }
+          else if (actualMode === "update") graphRef.current?.updateNodes(data.nodes);
+          else if (actualMode === "remove") graphRef.current?.removeNodes(data.nodes.map((n) => n.id));
+          setStreamStage("rendering");
+          setLiveNodeCount(data.nodes.length);
           setMessages((prev) => {
             const copy = [...prev];
             copy[copy.length - 1] = {
               role: "assistant",
-              content: `✦ Generated "${strict.data!.title}" — ${strict.data!.nodes.length} nodes`,
-              nodeCount: strict.data!.nodes.length,
+              content: `✦ Generated "${data.title}" — ${data.nodes.length} nodes`,
+              nodeCount: data.nodes.length,
             };
             return copy;
           });
-          return;
+        } else {
+          setMessages((prev) => {
+            const copy = [...prev];
+            copy[copy.length - 1] = {
+              role: "assistant",
+              content: "⚠ Could not parse graph from AI response.",
+            };
+            return copy;
+          });
         }
-      }
-      if (data) {
-        handleFinalMutations(data);
-        setMessages((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = {
-            role: "assistant",
-            content: `✦ Generated "${data.title}" — ${data.nodes.length} nodes`,
-            nodeCount: data.nodes.length,
-          };
-          return copy;
-        });
       } else {
+        // ── Files: process each chunk sequentially ──
+        let merged: GraphData = { title: "", nodes: [] };
+        const totalChunks = chunks.length;
+
+        for (let i = 0; i < chunks.length; i++) {
+          if (controller.signal.aborted) break;
+          const { fileName, text } = chunks[i];
+
+          // Update chat message with progress
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last.role === "assistant") {
+              copy[copy.length - 1] = {
+                ...last,
+                content: totalChunks > 1
+                  ? `✦ Processing chunk ${i + 1}/${totalChunks} — ${fileName}`
+                  : `✦ Processing ${fileName}…`,
+              };
+            }
+            return copy;
+          });
+
+          // Build chunk-specific prompt
+          const existingIds = merged.nodes.map((n) => n.id);
+          let chunkPrompt = contextualPrompt;
+          if (existingIds.length > 0) {
+            chunkPrompt += `\n\nEXISTING NODES (do NOT duplicate these, you may reference them in connections): ${existingIds.join(", ")}`;
+          }
+          chunkPrompt += `\n\nFILE CONTEXT (from "${fileName}", chunk ${i + 1}/${totalChunks}):\n${text}`;
+
+          const data = await callChunkAPI(
+            chunkPrompt,
+            existingIds.length > 0
+              ? `Continue building the knowledge graph from this document section. The user's focus: ${userText}`
+              : userText,
+            controller.signal,
+            model,
+          );
+
+          if (data) {
+            merged = mergeGraphs(merged, data);
+
+            // Incremental update — show nodes appearing in real time
+            setLiveNodeCount(merged.nodes.length);
+            lastNodeCountRef.current = merged.nodes.length;
+            if (actualMode === "generate" && !animateGrow) onGraphChange(merged);
+            else graphRef.current?.appendNodes(merged);
+          }
+        }
+
+        // Final sync
+        if (actualMode === "generate" && animateGrow) {
+          // Delay slightly to let the last append animation finish
+          await new Promise((r) => setTimeout(r, 300));
+          onGraphChange(merged);
+        }
+
+        setStreamStage("rendering");
+        setLiveNodeCount(merged.nodes.length);
         setMessages((prev) => {
           const copy = [...prev];
           copy[copy.length - 1] = {
             role: "assistant",
-            content: `⚠ Could not parse graph: ${error || "Unknown error"}`,
+            content: `✦ Generated "${merged.title}" — ${merged.nodes.length} nodes (from ${totalChunks} chunks)`,
+            nodeCount: merged.nodes.length,
           };
           return copy;
         });
@@ -1508,9 +1726,24 @@ function AiChatTab({
           };
           return copy;
         });
+      } else {
+        // User cancelled
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last.role === "assistant") {
+            copy[copy.length - 1] = {
+              ...last,
+              content: `✦ Cancelled${liveNodeCount > 0 ? ` — ${liveNodeCount} node${liveNodeCount !== 1 ? "s" : ""} generated` : ""}`,
+              nodeCount: liveNodeCount > 0 ? liveNodeCount : undefined,
+            };
+          }
+          return copy;
+        });
       }
     } finally {
       setIsStreaming(false);
+      setStreamStage("idle");
       abortRef.current = null;
     }
   };
@@ -1615,6 +1848,21 @@ function AiChatTab({
               }`}
             >
               {msg.content}
+              {msg.attachment && (
+                <div className="mt-1 flex items-center gap-1 text-[9px] opacity-70">
+                  <svg
+                    className="w-2.5 h-2.5"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M11.5 7.5l-5.3 5.3a2.1 2.1 0 01-3-3l6.4-6.4a1.4 1.4 0 012 2L5.2 11.7a.7.7 0 01-1-1l4.3-4.3" />
+                  </svg>
+                  {msg.attachment}
+                </div>
+              )}
               {msg.role === "assistant" &&
                 msg.nodeCount !== undefined &&
                 msg.nodeCount > 0 && (
@@ -1633,16 +1881,71 @@ function AiChatTab({
         ))}
         {isStreaming && (
           <div className="flex justify-start">
-            <div className="flex items-center gap-1 px-3.5 py-2.5 bg-surface2 border border-border rounded-xl rounded-bl-md">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-                style={{ animationDelay: "300ms" }}
-              />
+            <div className="flex flex-col gap-1.5 px-3.5 py-2.5 bg-surface2 border border-border rounded-xl rounded-bl-md min-w-[160px]">
+              {/* Stage indicators */}
+              <div className="flex items-center gap-2">
+                {(["connecting", "streaming", "parsing", "rendering"] as StreamStage[]).map(
+                  (stage, idx) => {
+                    const labels = ["Connecting", "Streaming", "Parsing", "Rendering"];
+                    const isActive = streamStage === stage;
+                    const isPast =
+                      ["connecting", "streaming", "parsing", "rendering"].indexOf(streamStage) > idx;
+                    return (
+                      <div key={stage} className="flex items-center gap-1">
+                        {idx > 0 && (
+                          <div
+                            className={`w-3 h-px transition-colors duration-300 ${
+                              isPast ? "bg-accent" : "bg-border2"
+                            }`}
+                          />
+                        )}
+                        <div className="flex items-center gap-1">
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                              isActive
+                                ? "bg-accent animate-pulse scale-110"
+                                : isPast
+                                  ? "bg-accent/60"
+                                  : "bg-border2"
+                            }`}
+                          />
+                          <span
+                            className={`text-[8px] tracking-wider uppercase transition-colors duration-300 ${
+                              isActive
+                                ? "text-accent"
+                                : isPast
+                                  ? "text-muted"
+                                  : "text-border2"
+                            }`}
+                          >
+                            {labels[idx]}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  },
+                )}
+              </div>
+              {/* Node counter */}
+              {liveNodeCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <div className="flex gap-0.5">
+                    {Array.from({ length: Math.min(liveNodeCount, 12) }, (_, j) => (
+                      <span
+                        key={j}
+                        className="inline-block w-1 h-1 rounded-full bg-accent/70"
+                        style={{ animation: `fadeIn 0.2s ease ${j * 50}ms both` }}
+                      />
+                    ))}
+                    {liveNodeCount > 12 && (
+                      <span className="text-[8px] text-muted ml-0.5">+{liveNodeCount - 12}</span>
+                    )}
+                  </div>
+                  <span className="text-[8px] text-muted">
+                    {liveNodeCount} node{liveNodeCount !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1650,7 +1953,7 @@ function AiChatTab({
       </div>
 
       {/* Example topics */}
-      {messages.length <= 1 && (
+      {messages.length <= 1 && attachedFiles.length === 0 && (
         <div className="px-4 pb-2">
           <p className="text-[9px] text-muted tracking-widest uppercase mb-2">
             Try a topic
@@ -1671,8 +1974,109 @@ function AiChatTab({
         </div>
       )}
 
+      {/* File attachment chips — shown above input */}
+      <AnimatePresence>
+        {attachedFiles.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="px-4 pb-1.5 flex flex-wrap gap-1.5"
+          >
+            {attachedFiles.map((file, i) => (
+              <motion.div
+                key={file.name + i}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] border ${
+                  file.error
+                    ? "bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]"
+                    : file.parsing
+                      ? "bg-accent/10 border-accent/30 text-accent"
+                      : "bg-surface2 border-border text-muted2"
+                }`}
+              >
+                {/* File icon */}
+                <svg
+                  className="w-3 h-3 flex-shrink-0"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M8.5 1.5H3.5A1.5 1.5 0 002 3v8a1.5 1.5 0 001.5 1.5h7A1.5 1.5 0 0012 11V5.5L8.5 1.5z" />
+                  <polyline points="8.5 1.5 8.5 5.5 12 5.5" />
+                </svg>
+
+                {/* Filename / status */}
+                {file.parsing ? (
+                  <span className="animate-pulse">
+                    {file.name}
+                    <span className="inline-block ml-1 animate-spin">⏳</span>
+                  </span>
+                ) : file.error ? (
+                  <span title={file.error}>{file.name} — error</span>
+                ) : (
+                  <span>{file.name}</span>
+                )}
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => removeFile(i)}
+                  className="ml-0.5 hover:opacity-80 transition-opacity"
+                >
+                  <svg
+                    className="w-2.5 h-2.5"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  >
+                    <line x1="2" y1="2" x2="8" y2="8" />
+                    <line x1="8" y1="2" x2="2" y2="8" />
+                  </svg>
+                </button>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Input area */}
-      <div className="relative border-t border-border flex-shrink-0">
+      <div
+        className="relative border-t border-border flex-shrink-0"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+        }}
+      >
+        {/* Drag-and-drop overlay */}
+        <AnimatePresence>
+          {dragOver && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-20 bg-accent/10 border-2 border-dashed border-accent flex items-center justify-center rounded"
+            >
+              <span className="text-[10px] text-accent tracking-widest uppercase">
+                Drop .pdf / .md / .txt here
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
           {showModeDropdown && (
             <motion.div
@@ -1700,6 +2104,19 @@ function AiChatTab({
           )}
         </AnimatePresence>
 
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.md,.txt,.text"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+
         <form
           className="flex items-center gap-2 px-4 py-3 min-w-0"
           onSubmit={sendMessage}
@@ -1716,6 +2133,27 @@ function AiChatTab({
             disabled={isStreaming || !signedInEmail}
             className="flex-1 min-w-0 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
           />
+
+          {/* Attach file button — paperclip icon */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isStreaming || !signedInEmail}
+            className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-surface2 border border-border2 text-muted hover:border-accent hover:text-accent transition-all duration-200 disabled:opacity-30"
+            title="Attach file (.pdf, .md, .txt)"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M11 6.5l-5.3 5.3a2.1 2.1 0 01-3-3l6.4-6.4a1.4 1.4 0 012 2L4.7 10.7a.7.7 0 01-1-1l4.3-4.3" />
+            </svg>
+          </button>
 
           <button
             type="button"
@@ -1745,7 +2183,11 @@ function AiChatTab({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim() || !signedInEmail}
+              disabled={
+                !input.trim() ||
+                !signedInEmail ||
+                parsingRef.current > 0
+              }
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent text-white disabled:opacity-30 hover:bg-[#6a58e8] transition-all duration-200 disabled:hover:bg-accent"
               title="Send"
             >
