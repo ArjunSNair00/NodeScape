@@ -1,15 +1,17 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import Graph3D from "./components/Graph3D";
 import True2DGraph from "./components/True2DGraph";
 import PageView from "./components/PageView";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./components/HomePage";
+import { SearchBar } from "./components/SearchBar";
 import { GraphData, NodeData, GraphRecord, GraphHandle } from "./types/graph";
 import { Graph2DHandle } from "./components/True2DGraph/graph2d.types";
 import { DEFAULT_GRAPH } from "./data/defaultGraph";
 import { useTheme } from "./hooks/useTheme";
 import { useGraphLibrary } from "./hooks/useGraphLibrary";
+import Fuse from "fuse.js";
 
 type View = "home" | "graph";
 
@@ -39,7 +41,65 @@ export default function App() {
   const [isPathAppendMode, setIsPathAppendMode] = useState(
     () => sessionStorage.getItem("pathAppendMode") === "true",
   );
-  const highlightSet = new Set(highlightPath);
+  const [isPathHideMode, setIsPathHideMode] = useState(
+    () => sessionStorage.getItem("isPathHideMode") === "true"
+  );
+  const [externalHoverNodeId, setExternalHoverNodeId] = useState<string | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchContent, setSearchContent] = useState(true);
+  const [highlightNeighbours, setHighlightNeighbours] = useState(true);
+
+  const fuseRef = useRef<Fuse<NodeData> | null>(null);
+
+  useEffect(() => {
+    const keys = ["label"];
+    if (searchContent) keys.push("content");
+    fuseRef.current = new Fuse(graphData.nodes, {
+      keys,
+      threshold: 0.3,
+      ignoreLocation: true,
+    });
+  }, [graphData.nodes, searchContent]);
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim() || !fuseRef.current) return [];
+    const results = fuseRef.current.search(searchQuery);
+    return results.map(r => ({
+      id: r.item.id,
+      label: r.item.label,
+      content: r.item.content
+    }));
+  }, [searchQuery, graphData.nodes, searchContent]);
+
+  const searchMatchedNodeIds = useMemo(() => {
+    const matches = new Set<string>();
+    searchResults.forEach(r => matches.add(r.id));
+    return matches;
+  }, [searchResults]);
+
+  const highlightSet = useMemo(() => {
+    const s = new Set(isPathMode ? highlightPath : []);
+    
+    // Add primary matches
+    searchMatchedNodeIds.forEach(id => s.add(id));
+    
+    // Highlight neighbours if enabled
+    if (highlightNeighbours && searchMatchedNodeIds.size > 0) {
+      graphData.nodes.forEach((n) => {
+        if (searchMatchedNodeIds.has(n.id) && n.connections) {
+          n.connections.forEach(c => s.add(c));
+        }
+      });
+      graphData.nodes.forEach((n) => {
+        if (n.connections && n.connections.some(c => searchMatchedNodeIds.has(c))) {
+          s.add(n.id);
+        }
+      });
+    }
+
+    return s;
+  }, [highlightPath, searchMatchedNodeIds, isPathMode, highlightNeighbours, graphData.nodes]);
   const [isLockEnabled, setIsLockEnabled] = useState(
     () => sessionStorage.getItem("lockCamera") !== "false",
   );
@@ -195,6 +255,12 @@ export default function App() {
     sessionStorage.setItem("pathAppendMode", String(next));
   };
 
+  const handleTogglePathHideMode = () => {
+    const next = !isPathHideMode;
+    setIsPathHideMode(next);
+    sessionStorage.setItem("isPathHideMode", String(next));
+  };
+
   const handleLockCamera = (nodeId: string) => {
     setIsLockEnabled(true);
     sessionStorage.setItem("lockCamera", "true");
@@ -295,6 +361,18 @@ export default function App() {
           />
         ) : (
           <div key="graph" className="absolute inset-0 overflow-hidden">
+            <SearchBar 
+              theme={theme}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              matchesCount={searchMatchedNodeIds.size}
+              searchResults={searchResults}
+              onResultClick={(nodeId) => handleNodeSelect(nodeId)}
+              searchContent={searchContent}
+              onSearchContentChange={setSearchContent}
+              highlightNeighbours={highlightNeighbours}
+              onHighlightNeighboursChange={setHighlightNeighbours}
+            />
             {/* Graph area — fills the full container */}
             <div
               ref={splitContainerRef}
@@ -334,6 +412,9 @@ export default function App() {
                       lockedToNodeId={lockedToNodeId}
                       onLockCamera={handleLockCamera}
                       onUnlockCamera={handleUnlockCamera}
+                      onNodeHover={setExternalHoverNodeId}
+                      isPathHideMode={isPathHideMode}
+                      onTogglePathHideMode={handleTogglePathHideMode}
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-in fade-in zoom-in duration-500">
@@ -408,6 +489,8 @@ export default function App() {
                       sessionStorage.setItem("true2DMode", "false");
                     }}
                     isPathMode={isPathMode}
+                    isPathHideMode={isPathHideMode}
+                    externalHoverNodeId={externalHoverNodeId}
                   />
                 ) : (
                   <Graph3D
@@ -467,6 +550,8 @@ export default function App() {
                       sessionStorage.setItem("lockCamera", String(id !== null));
                     }}
                     activeNodeId={activePage?.id ?? null}
+                    isPathHideMode={isPathHideMode}
+                    externalHoverNodeId={externalHoverNodeId}
                   />
                 )}
 
@@ -521,6 +606,9 @@ export default function App() {
                       lockedToNodeId={lockedToNodeId}
                       onLockCamera={handleLockCamera}
                       onUnlockCamera={handleUnlockCamera}
+                      onNodeHover={setExternalHoverNodeId}
+                      isPathHideMode={isPathHideMode}
+                      onTogglePathHideMode={handleTogglePathHideMode}
                     />
                   )}
                 </AnimatePresence>

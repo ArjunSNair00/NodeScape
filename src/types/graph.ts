@@ -70,6 +70,7 @@ export interface LinkObj {
   source: SimNode;
   target: SimNode;
   animProgress?: number;
+  arrowMesh?: THREE.Mesh;
 }
 
 export interface Spherical {

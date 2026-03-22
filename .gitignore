@@ -4,3 +4,4 @@ IDEAS
 UI_inspiration
 .env
 .gitignore
+supabase/.env

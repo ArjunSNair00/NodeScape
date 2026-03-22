@@ -1,0 +1,26 @@
+# Features Implementation
+
+- [ ] 1. True2D Marquee Tool
+  - [ ] Add SVG overlay to `True2DGraph/index.tsx`
+  - [ ] Implement local coordinate calculation for Marquee start/path
+  - [ ] Implement shape logic (rect/freehand)
+  - [ ] Implement bound/point selection on mouse up
+- [ ] 2. Node Content Hover Highlight
+  - [ ] Identify where node buttons are rendered in [PageView](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/components/PageView.tsx#102-398) or [App](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx#16-535)
+  - [ ] Pass hover callbacks (`onNodeHovered` / `onNodeLeave`) from Graph context to the content view
+  - [ ] Update `Graph3D` and `True2DGraph` to accept external hover override
+- [ ] 3. Path Mode "Hide Non-Highlighted" Toggle
+  - [ ] Add UI toggle button in App toolbar for Path Mode
+  - [ ] Add state `hideNonHighlighted` to [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx)
+  - [ ] Pass state to `Graph3D` and `True2DGraph`
+  - [ ] Modify rendering logic to completely hide rather than dim
+- [ ] 4. Search Bar
+  - [ ] Add Search UI next to Trash can in [App.tsx](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/src/App.tsx)
+  - [ ] Add "search within content" checkbox
+  - [ ] Implement search-as-you-type logic
+  - [ ] Auto-highlight search result node and its neighbors
+  - [ ] Implement Enter/Click action to open node
+- [ ] 5. Documentation Updates
+  - [ ] Update [README.md](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/README.md) (move Open-Source setup, mention new basic AI gateway backend, update Roadmap)
+  - [ ] Update [Docs/CONTEXT.md](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/Docs/CONTEXT.md)
+  - [ ] Update [Docs/AI.md](file:///c:/Users/arath/OneDrive/Desktop/NodeScape/Docs/AI.md)

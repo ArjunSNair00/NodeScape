@@ -24,6 +24,9 @@ import {
   LayoutAlgorithm,
   Node2D,
 } from "./graph2d.types";
+import { AnimatePresence, motion } from "framer-motion";
+
+type MarqueeMode = "none" | "rect" | "freehand";
 
 interface Props {
   graphData: GraphData;
@@ -37,6 +40,8 @@ interface Props {
   onToggleSplitMode?: () => void;
   onToggleTrue2D?: () => void;
   isPathMode?: boolean;
+  isPathHideMode?: boolean;
+  externalHoverNodeId?: string | null;
   sidebarOpen?: boolean;
   isEditMode?: boolean;
   onToggleTheme?: () => void;
@@ -188,6 +193,8 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     onToggleSplitMode,
     onToggleTrue2D,
     isPathMode = false,
+    isPathHideMode = false,
+    externalHoverNodeId = null,
     sidebarOpen = false,
     isEditMode = false,
     onToggleTheme,
@@ -219,6 +226,9 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
   const nodeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
   const nodeLabelRef = useRef<Map<string, Text>>(new Map());
   const edgeGraphicsRef = useRef<Map<string, Graphics>>(new Map());
+  const dragOffsetsRef = useRef<Map<string, { dx: number; dy: number }>>(
+    new Map(),
+  );
 
   const [physicsOn, setPhysicsOn] = useState(
     graphData.nodes.length <= PHYSICS_BIG_GRAPH_THRESHOLD,
@@ -243,6 +253,20 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     spawnY?: number;
   } | null>(null);
   const isCommittingRef = useRef(false);
+
+  // Marquee states
+  const [marqueeMode, setMarqueeMode] = useState<MarqueeMode>("none");
+  const [marqueeMenuOpen, setMarqueeMenuOpen] = useState(false);
+  const activeMarqueeModeRef = useRef(marqueeMode);
+  useEffect(() => {
+    activeMarqueeModeRef.current = marqueeMode;
+  }, [marqueeMode]);
+  const selectedNodeIdsRef = useRef<Set<string>>(new Set());
+  const marqueeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const marqueePathRef = useRef<{ x: number; y: number }[]>([]);
+  const marqueePolygonRef = useRef<SVGPolygonElement>(null);
+  const marqueeRectRef = useRef<SVGRectElement>(null);
+
   const draftEdgeRef = useRef<{
     sourceId: string;
     x: number;
@@ -333,9 +357,11 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
     const focusConnected = hoveredNodeId
       ? findConnectedSet(hoveredNodeId)
-      : activeNodeId
-        ? findConnectedSet(activeNodeId)
-        : null;
+      : externalHoverNodeId
+        ? findConnectedSet(externalHoverNodeId)
+        : activeNodeId
+          ? findConnectedSet(activeNodeId)
+          : null;
     const emphasisSet = new Set<string>(highlightSet);
     if (focusConnected) {
       focusConnected.forEach((id) => emphasisSet.add(id));
@@ -372,7 +398,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           alpha = 0.5;
           width = 1.25;
         } else {
-          alpha = 0.04;
+          alpha = isPathHideMode ? 0.0 : 0.04;
           width = 1.25;
         }
       } else {
@@ -414,8 +440,8 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       const label = nodeLabelRef.current.get(n.id);
       if (!gfx || !label) return;
 
-      const isSelected = activeNodeId === n.id;
-      const isHovered = hoveredNodeId === n.id;
+      const isSelected = activeNodeId === n.id || selectedNodeIdsRef.current.has(n.id);
+      const isHovered = hoveredNodeId === n.id || externalHoverNodeId === n.id;
       const inPath = highlightSet.has(n.id);
       const inConnected = focusConnected?.has(n.id) ?? false;
 
@@ -439,8 +465,8 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           alpha = 0.85;
           ringAlpha = 0.2;
         } else {
-          alpha = 0.12;
-          ringAlpha = 0.05;
+          alpha = isPathHideMode ? 0.0 : 0.12;
+          ringAlpha = isPathHideMode ? 0.0 : 0.05;
         }
       }
 
@@ -457,7 +483,9 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       let currentScale = 1.0;
       if (isSelected) {
         const time = Date.now() / 1000;
-        currentScale = 1.0 + 0.15 * Math.sin(time * 3.0);
+        const breath = 0.5 + 0.2 * Math.sin(time * 4.0);
+        ringAlpha = breath;
+        currentScale = 1.0 + 0.05 * Math.sin(time * 4.0);
       }
       gfx.scale.set(currentScale);
 
@@ -499,6 +527,8 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     highlightSet,
     highlightPath,
     isPathMode,
+    isPathHideMode,
+    externalHoverNodeId,
     hoveredNodeId,
     activeNodeId,
   ]);
@@ -624,8 +654,23 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         if (dragGestureRef.current.nodeId && dragGestureRef.current.moved) {
           suppressNodeTapRef.current = dragGestureRef.current.nodeId;
         }
-        draggingNodeRef.current.pinned = false;
+
+        const isSelected = selectedNodeIdsRef.current.has(draggingNodeRef.current.id);
+        if (isSelected) {
+          selectedNodeIdsRef.current.forEach((id) => {
+            const n = graphRef.current.nodeMap.get(id);
+            if (n) {
+              n.pinned = false;
+              n.vx = 0; n.vy = 0;
+            }
+          });
+        } else {
+          draggingNodeRef.current.pinned = false;
+          draggingNodeRef.current.vx = 0; draggingNodeRef.current.vy = 0;
+        }
+
         draggingNodeRef.current = null;
+        dragOffsetsRef.current.clear();
         dragGestureRef.current = {
           nodeId: null,
           startX: 0,
@@ -668,11 +713,29 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
       if (draggingNodeRef.current) {
         const p = screenToWorld(app, world, gx, gy);
-        draggingNodeRef.current.x = p.x;
-        draggingNodeRef.current.y = p.y;
-        const dx = e.clientX - dragGestureRef.current.startX;
-        const dy = e.clientY - dragGestureRef.current.startY;
-        if (dx * dx + dy * dy > 25) {
+
+        const isSelected = selectedNodeIdsRef.current.has(draggingNodeRef.current.id);
+
+        if (isSelected && dragOffsetsRef.current.size > 0) {
+          // Move all selected nodes via pre-calculated offsets
+          selectedNodeIdsRef.current.forEach((id) => {
+            const node = graphRef.current.nodeMap.get(id);
+            const off = dragOffsetsRef.current.get(id);
+            if (node && off) {
+              node.x = p.x + off.dx;
+              node.y = p.y + off.dy;
+              node.pinned = true;
+            }
+          });
+        } else {
+          // Move only the dragged node
+          draggingNodeRef.current.x = p.x;
+          draggingNodeRef.current.y = p.y;
+        }
+
+        const screenDx = e.clientX - dragGestureRef.current.startX;
+        const screenDy = e.clientY - dragGestureRef.current.startY;
+        if (screenDx * screenDx + screenDy * screenDy > 25) {
           dragGestureRef.current.moved = true;
         }
         renderSceneRef.current();
@@ -718,14 +781,41 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         clickRef.current = { time: now, id: "empty" };
       }
 
+      const activeMM = activeMarqueeModeRef.current;
       const isMiddle = e.button === 1;
-      const isBackgroundPrimaryDragPan = e.button === 0 && isBackground;
-      if (
-        isMiddle ||
-        (!draftEdgeRef.current && e.shiftKey) ||
-        isBackgroundPrimaryDragPan
-      ) {
-        beginPanFromEvent(e);
+
+      if (activeMM !== "none" && e.button === 0 && isBackground) {
+        const mRect = canvas.getBoundingClientRect();
+        const native = e.nativeEvent as PointerEvent;
+        const lx = native.clientX - mRect.left;
+        const ly = native.clientY - mRect.top;
+
+        marqueeStartRef.current = { x: lx, y: ly };
+        marqueePathRef.current = [{ x: lx, y: ly }];
+
+        if (!e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            selectedNodeIdsRef.current.clear();
+        }
+
+        if (activeMM === "rect" && marqueeRectRef.current) {
+            marqueeRectRef.current.classList.remove("hidden");
+            marqueeRectRef.current.setAttribute("x", String(lx));
+            marqueeRectRef.current.setAttribute("y", String(ly));
+            marqueeRectRef.current.setAttribute("width", "0");
+            marqueeRectRef.current.setAttribute("height", "0");
+        } else if (activeMM === "freehand" && marqueePolygonRef.current) {
+            marqueePolygonRef.current.classList.remove("hidden");
+            marqueePolygonRef.current.setAttribute("points", `${lx},${ly}`);
+        }
+      } else {
+        const isBackgroundPrimaryDragPan = e.button === 0 && isBackground;
+        if (
+          isMiddle ||
+          (!draftEdgeRef.current && e.shiftKey) ||
+          isBackgroundPrimaryDragPan
+        ) {
+          beginPanFromEvent(e);
+        }
       }
     });
 
@@ -741,6 +831,33 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         plusRef.current.style.opacity = "1";
       } else if (plusRef.current) {
         plusRef.current.style.opacity = "0";
+      }
+
+      if (marqueeStartRef.current) {
+        const native = e.nativeEvent as PointerEvent;
+        const mRect = canvas.getBoundingClientRect();
+        const lx = native.clientX - mRect.left;
+        const ly = native.clientY - mRect.top;
+        const pt = { x: lx, y: ly };
+        marqueePathRef.current.push(pt);
+
+        if (activeMarqueeModeRef.current === "rect" && marqueeRectRef.current) {
+          const start = marqueeStartRef.current;
+          const rx = Math.min(start.x, pt.x);
+          const ry = Math.min(start.y, pt.y);
+          const rw = Math.abs(pt.x - start.x);
+          const rh = Math.abs(pt.y - start.y);
+          marqueeRectRef.current.setAttribute("x", String(rx));
+          marqueeRectRef.current.setAttribute("y", String(ry));
+          marqueeRectRef.current.setAttribute("width", String(rw));
+          marqueeRectRef.current.setAttribute("height", String(rh));
+        } else if (activeMarqueeModeRef.current === "freehand" && marqueePolygonRef.current) {
+          marqueePolygonRef.current.setAttribute(
+            "points",
+            marqueePathRef.current.map((p) => `${p.x},${p.y}`).join(" ")
+          );
+        }
+        return;
       }
 
       if (draftEdgeRef.current && worldRef.current) {
@@ -774,6 +891,66 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
     });
 
     const handlePointerUp = (e: FederatedPointerEvent) => {
+      if (marqueeStartRef.current) {
+        const path = marqueePathRef.current;
+        marqueeStartRef.current = null;
+
+        if (marqueeRectRef.current) marqueeRectRef.current.classList.add("hidden");
+        if (marqueePolygonRef.current) marqueePolygonRef.current.classList.add("hidden");
+
+        if (path.length > 2 || (activeMarqueeModeRef.current === "rect" && path.length > 0)) {
+          const rect = canvas.getBoundingClientRect();
+          let boundMinX = Infinity, boundMinY = Infinity, boundMaxX = -Infinity, boundMaxY = -Infinity;
+
+          if (activeMarqueeModeRef.current === "rect") {
+            const native = e.nativeEvent as PointerEvent;
+            const lxEnd = native.clientX - rect.left;
+            const lyEnd = native.clientY - rect.top;
+            boundMinX = Math.min(path[0].x, lxEnd);
+            boundMaxX = Math.max(path[0].x, lxEnd);
+            boundMinY = Math.min(path[0].y, lyEnd);
+            boundMaxY = Math.max(path[0].y, lyEnd);
+          }
+
+          const pointInPoly = (px: number, py: number) => {
+            let inside = false;
+            for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+              const xi = path[i].x, yi = path[i].y;
+              const xj = path[j].x, yj = path[j].y;
+              const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+              if (intersect) inside = !inside;
+            }
+            return inside;
+          };
+
+          const world = worldRef.current;
+          if (world && appRef.current) {
+            graphRef.current.nodes.forEach((sn) => {
+              const sx = sn.x * world.scale.x + world.x;
+              const sy = sn.y * world.scale.y + world.y;
+
+              let isInside = false;
+              if (activeMarqueeModeRef.current === "rect") {
+                isInside = sx >= boundMinX && sx <= boundMaxX && sy >= boundMinY && sy <= boundMaxY;
+              } else {
+                isInside = pointInPoly(sx, sy);
+              }
+
+              if (isInside) {
+                const native = e.nativeEvent as PointerEvent;
+                if (native.altKey) {
+                  selectedNodeIdsRef.current.delete(sn.id);
+                } else {
+                  selectedNodeIdsRef.current.add(sn.id);
+                }
+              }
+            });
+          }
+        }
+        endInteraction();
+        return;
+      }
+
       const draft = draftEdgeRef.current;
       if (draft && worldRef.current) {
         const p = screenToWorld(app, worldRef.current, e.global.x, e.global.y);
@@ -1002,7 +1179,24 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           }
 
           // Left-drag on node moves node (Alt+drag also follows this path).
-          n.pinned = true;
+          const isSelected = selectedNodeIdsRef.current.has(n.id);
+          dragOffsetsRef.current.clear();
+
+          if (isSelected) {
+            selectedNodeIdsRef.current.forEach((id) => {
+              const node = graphRef.current.nodeMap.get(id);
+              if (node) {
+                node.pinned = true;
+                dragOffsetsRef.current.set(id, {
+                  dx: node.x - p.x,
+                  dy: node.y - p.y,
+                });
+              }
+            });
+          } else {
+            n.pinned = true;
+          }
+
           draggingNodeRef.current = n;
           dragGestureRef.current = {
             nodeId: n.id,
@@ -1010,9 +1204,6 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
             startY: (e.nativeEvent as PointerEvent).clientY,
             moved: false,
           };
-          // Keep relative grab offset to avoid instant snapping jumps.
-          n.x = p.x;
-          n.y = p.y;
           return;
         }
       });
@@ -1202,7 +1393,24 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-bg">
-      <div ref={hostRef} className="absolute inset-0" />
+      <div ref={hostRef} className="absolute inset-0 touch-none" />
+      <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
+        <rect
+          ref={marqueeRectRef}
+          fill="rgba(124,106,247,0.15)"
+          stroke="rgba(124,106,247,0.8)"
+          strokeWidth="1.5"
+          className="hidden"
+        />
+        <polygon
+          ref={marqueePolygonRef}
+          fill="rgba(124,106,247,0.15)"
+          stroke="rgba(124,106,247,0.8)"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          className="hidden"
+        />
+      </svg>
 
       {/* Left index sidebar */}
       <div
@@ -1483,9 +1691,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           }
         >
           INDEX
-        </button>
-
-        <button
+        </button>        <button
           onClick={onToggleSidebar}
           className="flex items-center justify-center h-8 px-2.5 rounded-md border border-border2 bg-surface/90 text-[10px] font-bold tracking-widest text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
           title="Open Studio Sidebar"
@@ -1647,6 +1853,62 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         >
           FIT
         </button>
+
+        {/* Marquee Select Dropdown */}
+        <div className="relative flex items-center h-6">
+          <button
+            onClick={() => {
+              setMarqueeMode((m) => (m === "none" ? "rect" : "none"));
+              if (marqueeMode !== "none") selectedNodeIdsRef.current.clear();
+              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
+            }}
+            title={`Marquee Tool: ${marqueeMode === "none" ? "OFF" : marqueeMode.toUpperCase()}`}
+            className={`flex items-center justify-center w-7 h-6 rounded-l-md border-y border-l transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== "none"
+                ? "border-accent text-accent bg-accent/20 shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+              <rect x="3" y="3" width="18" height="18" strokeDasharray="3 3" />
+            </svg>
+          </button>
+          <button
+            onClick={() => {
+              setMarqueeMenuOpen((m) => !m);
+              setContextMenu({ visible: false, x: 0, y: 0, nodeId: null });
+            }}
+            className={`flex items-center justify-center w-4 h-6 rounded-r-md border-y border-r transition-all duration-200 backdrop-blur-md ${
+              marqueeMode !== "none"
+                ? "border-accent text-accent bg-accent/20"
+                : "border-border2 bg-surface/90 text-muted2 hover:border-accent hover:text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <AnimatePresence>
+            {marqueeMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }}
+                className="absolute bottom-8 left-0 z-50 w-32 py-1 rounded-xl border border-border2 shadow-xl backdrop-blur-xl"
+                style={{ background: isDark ? "rgba(30,30,30,0.85)" : "rgba(255,255,255,0.85)" }}
+              >
+                <div className="px-3 py-1.5 text-[9px] uppercase tracking-widest text-muted2 font-bold mb-1 border-b border-border/40">Mode</div>
+                {[{ id: "rect", label: "Rect" }, { id: "freehand", label: "Free" }].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { setMarqueeMode(opt.id as MarqueeMode); setMarqueeMenuOpen(false); }}
+                    className={`w-full px-3 py-1.5 text-left text-[10px] font-medium tracking-wide flex items-center justify-between hover:bg-accent/10 transition-colors ${marqueeMode === opt.id ? "text-accent" : "text-text"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <button
           onClick={save2DLayout}

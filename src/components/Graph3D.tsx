@@ -35,6 +35,11 @@ import {
 import { Theme, themeBgInt, themeFogColor } from "../hooks/useTheme";
 import { GraphStateEngine } from "../engine/GraphStateEngine";
 import { tryRepairAndParse } from "../lib/validateGraph";
+import { getSupabaseAccessToken } from "../lib/supabaseAuth";
+
+const AI_FUNCTION_URL =
+  "https://trxpofoucgdytlhovrkq.supabase.co/functions/v1/ai";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface Props {
   graphData: GraphData;
@@ -59,6 +64,8 @@ interface Props {
   highlightPath?: string[];
   onLockChange?: (nodeId: string | null) => void;
   activeNodeId?: string | null;
+  externalHoverNodeId?: string | null;
+  isPathHideMode?: boolean;
 }
 
 // ─── Mobile D-Pad ─────────────────────────────────────────────────────────────
@@ -188,6 +195,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     highlightPath = [],
     onLockChange,
     activeNodeId = null,
+    externalHoverNodeId = null,
+    isPathHideMode = false,
   },
   ref,
 ) {
@@ -256,28 +265,49 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
     let fullBuffer = "";
     try {
-      const response = await fetch(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: `Expand on ${targetNode.label}.` },
-            ],
-            response_format: { type: "json_object" },
-            stream: true,
-          }),
-          signal: controller.signal,
-        },
-      );
+      if (!SUPABASE_ANON_KEY) {
+        throw new Error("Missing VITE_SUPABASE_ANON_KEY in .env");
+      }
+      const userAccessToken = await getSupabaseAccessToken();
+      if (!userAccessToken) {
+        throw new Error("Sign in required: no Supabase user session found.");
+      }
 
-      if (!response.ok) throw new Error("API error");
+      const response = await fetch(AI_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${userAccessToken}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Expand on ${targetNode.label}.` },
+          ],
+          response_format: { type: "json_object" },
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        let errData: any = null;
+        try {
+          errData = errText ? JSON.parse(errText) : null;
+        } catch {
+          errData = null;
+        }
+        throw new Error(
+          errData?.error?.message ||
+            errData?.error ||
+            errData?.message ||
+            errText ||
+            `API error ${response.status}`,
+        );
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -608,6 +638,14 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     }, 100);
   };
 
+  const isPathModeRef = useRef(isPathMode);
+  const highlightPathRef = useRef(highlightPath);
+
+  useEffect(() => {
+    isPathModeRef.current = isPathMode;
+    highlightPathRef.current = highlightPath;
+  }, [isPathMode, highlightPath]);
+
   const handleSaveClick = () => {
     onSave();
     setShowSavedToast(true);
@@ -918,6 +956,8 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         linkObjsRef.current,
         sphRef.current,
         labelMultRef.current,
+        highlightPathRef.current,
+        isPathModeRef.current,
       );
 
       // Link Growth Animation
@@ -1370,8 +1410,14 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         } else {
           // Empty space → start marquee
           if (activeMM !== "none") {
-            marqueeStartRef.current = { x: e.clientX, y: e.clientY };
-            marqueePathRef.current = [{ x: e.clientX, y: e.clientY }];
+            // Use local canvas coords so the SVG overlay (absolute inset-0)
+            // matches node projections in split-screen mode.
+            const mRect = canvas.getBoundingClientRect();
+            const lx = e.clientX - mRect.left;
+            const ly = e.clientY - mRect.top;
+
+            marqueeStartRef.current = { x: lx, y: ly };
+            marqueePathRef.current = [{ x: lx, y: ly }];
 
             if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey)
               selectedNodeIdsRef.current.clear();
@@ -1379,18 +1425,15 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             if (activeMM === "rect") {
               if (marqueeRectRef.current) {
                 marqueeRectRef.current.classList.remove("hidden");
-                marqueeRectRef.current.setAttribute("x", String(e.clientX));
-                marqueeRectRef.current.setAttribute("y", String(e.clientY));
+                marqueeRectRef.current.setAttribute("x", String(lx));
+                marqueeRectRef.current.setAttribute("y", String(ly));
                 marqueeRectRef.current.setAttribute("width", "0");
                 marqueeRectRef.current.setAttribute("height", "0");
               }
             } else if (activeMM === "freehand") {
               if (marqueePolygonRef.current) {
                 marqueePolygonRef.current.classList.remove("hidden");
-                marqueePolygonRef.current.setAttribute(
-                  "points",
-                  `${e.clientX},${e.clientY}`,
-                );
+                marqueePolygonRef.current.setAttribute("points", `${lx},${ly}`);
               }
             }
           }
@@ -1422,7 +1465,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
       if (m.down) {
         if (marqueeStartRef.current) {
-          const pt = { x: e.clientX, y: e.clientY };
+          // Keep using local canvas coords throughout (matches onMouseDown fix).
+          const mRect = canvas.getBoundingClientRect();
+          const lx = e.clientX - mRect.left;
+          const ly = e.clientY - mRect.top;
+          const pt = { x: lx, y: ly };
           marqueePathRef.current.push(pt);
 
           if (activeMarqueeModeRef.current === "rect") {
@@ -1606,6 +1653,11 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           if (hoveredNode) hit = hoveredNode;
         }
 
+        if (!hit && externalHoverNodeId) {
+          const extNode = nodeObjsRef.current.find((o) => o.node.id === externalHoverNodeId);
+          if (extNode) hit = extNode;
+        }
+
         if (isPathMode && highlightSet.size > 0) {
           hovObjRef.current = setHighlightedWithHover(
             highlightSet,
@@ -1614,8 +1666,17 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             hovObjRef.current,
             nodeObjsRef.current,
             linkObjsRef.current,
+            isPathHideMode
           );
         } else {
+          setHighlighted(
+            highlightSet,
+            nodeObjsRef.current,
+            linkObjsRef.current,
+            highlightPath,
+            isPathHideMode
+          );
+          // And also call setHoveredNode since setHighlighted doesn't do hover highlighting
           hovObjRef.current = setHoveredNode(
             hit,
             hovObjRef.current,
@@ -1672,10 +1733,13 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             boundMaxY = -Infinity;
 
           if (activeMarqueeModeRef.current === "rect") {
-            boundMinX = Math.min(m.start.x, e.clientX);
-            boundMaxX = Math.max(m.start.x, e.clientX);
-            boundMinY = Math.min(m.start.y, e.clientY);
-            boundMaxY = Math.max(m.start.y, e.clientY);
+            // path[0] is the start in local coords (set in onMouseDown)
+            const lxEnd = e.clientX - rect.left;
+            const lyEnd = e.clientY - rect.top;
+            boundMinX = Math.min(path[0].x, lxEnd);
+            boundMaxX = Math.max(path[0].x, lxEnd);
+            boundMinY = Math.min(path[0].y, lyEnd);
+            boundMaxY = Math.max(path[0].y, lyEnd);
           }
 
           const pointInPoly = (px: number, py: number) => {
@@ -1703,8 +1767,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
             v.set(sn.x, sn.y, sn.z);
             v.project(cam);
 
-            const sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
-            const sy = (-(v.y * 0.5) + 0.5) * rect.height + rect.top;
+            // Project to local canvas coords (no viewport offset) to match
+            // the local-coord marquee bounds computed above.
+            const sx = (v.x * 0.5 + 0.5) * rect.width;
+            const sy = (-(v.y * 0.5) + 0.5) * rect.height;
 
             let isInside = false;
 
@@ -1958,26 +2024,28 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
 
   // Sync Path Mode visuals: use combined function so path + current hover stay in sync
   useEffect(() => {
-    if (isPathMode && highlightSet.size > 0) {
+    let hit: NodeObj | LinkObj | null = hovObjRef.current;
+    if (externalHoverNodeId) {
+      hit = nodeObjsRef.current.find(o => o.node.id === externalHoverNodeId) || hovObjRef.current;
+    }
+
+    if (highlightSet.size > 0) {
       setHighlightedWithHover(
         highlightSet,
-        highlightPath,
-        hovObjRef.current,
+        isPathMode ? highlightPath : [],
+        hit,
         hovObjRef.current,
         nodeObjsRef.current,
         linkObjsRef.current,
+        isPathMode ? isPathHideMode : false
       );
-    } else if (!isPathMode) {
-      setHighlighted(new Set(), nodeObjsRef.current, linkObjsRef.current, []);
     } else {
-      setHighlighted(
-        highlightSet,
-        nodeObjsRef.current,
-        linkObjsRef.current,
-        highlightPath,
-      );
+      setHighlighted(new Set(), nodeObjsRef.current, linkObjsRef.current, [], false);
+      if (hit) {
+        setHoveredNode(hit, hovObjRef.current, nodeObjsRef.current, linkObjsRef.current);
+      }
     }
-  }, [highlightSet, highlightPath, isPathMode]);
+  }, [highlightSet, highlightPath, isPathMode, externalHoverNodeId, isPathHideMode]);
 
   // ── touch events ──────────────────────────────────────────────────────────────
   useEffect(() => {

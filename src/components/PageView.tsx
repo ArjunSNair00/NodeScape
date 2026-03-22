@@ -25,6 +25,9 @@ interface Props {
   lockedToNodeId?: string | null;
   onLockCamera?: (nodeId: string) => void;
   onUnlockCamera?: () => void;
+  onNodeHover?: (nodeId: string | null) => void;
+  isPathHideMode?: boolean;
+  onTogglePathHideMode?: () => void;
 }
 
 function EditableText({
@@ -122,6 +125,9 @@ export default function PageView({
   lockedToNodeId = null,
   onLockCamera,
   onUnlockCamera,
+  onNodeHover,
+  isPathHideMode = false,
+  onTogglePathHideMode,
 }: Props) {
   const Wrapper = uiAnimations ? motion.div : ("div" as any);
   const MotionH1 = uiAnimations ? motion.h1 : ("h1" as any);
@@ -235,6 +241,17 @@ export default function PageView({
               title="When ON, revisiting earlier nodes appends to the current path"
             >
               Append {isPathAppendMode ? "ON" : "OFF"}
+            </button>
+            <button
+              onClick={onTogglePathHideMode ?? (() => {})}
+              className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
+                isPathHideMode
+                  ? "border-accent text-accent bg-accent/10"
+                  : "border-border text-muted hover:border-accent/60"
+              }`}
+              title="When ON, only nodes that are highlighted will be visible"
+            >
+              Hide Ambient {isPathHideMode ? "ON" : "OFF"}
             </button>
             {highlightPath.length > 0 && (
               <button
@@ -371,6 +388,8 @@ export default function PageView({
                     <button
                       key={cid}
                       onClick={() => onNodeSelect(cn.id)}
+                      onMouseEnter={() => onNodeHover?.(cn.id)}
+                      onMouseLeave={() => onNodeHover?.(null)}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border transition-all duration-200 text-xs ${
                         isVisited
                           ? "border-border/40 bg-surface2/40 text-muted/50 hover:border-accent/40"

@@ -177,8 +177,28 @@ export function buildSceneObjects(
     const line = new THREE.Line(geo, mat);
     line.computeLineDistances(); // For dashed lines
 
+    // Path arrow
+    const arrowGeo = new THREE.ConeGeometry(5, 12, 12);
+    // Rotate geometry once so that it points along the Z axis (Three.js Cone points along +Y initially)
+    arrowGeo.rotateX(Math.PI / 2);
+    const arrowMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      visible: false,
+    });
+    const arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
+    scene.add(arrowMesh);
+
     scene.add(line);
-    linkObjs.push({ line, mat, dashedMat, source: l.source, target: l.target });
+    linkObjs.push({
+      line,
+      mat,
+      dashedMat,
+      source: l.source,
+      target: l.target,
+      arrowMesh,
+    });
   });
 
   return { nodeObjs, linkObjs };
@@ -200,6 +220,11 @@ export function clearSceneObjects(
   linkObjs.forEach((o) => {
     scene.remove(o.line);
     o.line.geometry.dispose();
+    if (o.arrowMesh) {
+      scene.remove(o.arrowMesh);
+      o.arrowMesh.geometry.dispose();
+      (o.arrowMesh.material as THREE.Material).dispose();
+    }
   });
 }
 
@@ -308,6 +333,8 @@ export function syncPositions(
   linkObjs: LinkObj[],
   spherical: Spherical,
   labelMult = 1,
+  highlightPath: string[] = [],
+  isPathMode = false,
 ) {
   const labelScale = spherical.radius * 0.13 * labelMult;
 
@@ -341,6 +368,40 @@ export function syncPositions(
     }
 
     pos.needsUpdate = true;
+
+    // Update arrows
+    if (lo.arrowMesh) {
+      const isPrimary =
+        isPathMode &&
+        highlightPath.length > 0 &&
+        isPrimaryPathEdge(lo.source.id, lo.target.id, highlightPath);
+
+      if (isPrimary) {
+        const dir = getPrimaryPathDirection(lo.source.id, lo.target.id, highlightPath);
+        if (dir) {
+          const from = dir.fromId === lo.source.id ? lo.source : lo.target;
+          const to = dir.toId === lo.source.id ? lo.source : lo.target;
+
+          const toVec = new THREE.Vector3(to.x, to.y, to.z);
+          const fromVec = new THREE.Vector3(from.x, from.y, from.z);
+          const edgeVec = new THREE.Vector3().subVectors(toVec, fromVec);
+          const length = edgeVec.length();
+          const unitEdge = edgeVec.clone().normalize();
+
+          // Position arrow slightly offset from the target node surface
+          const offset = to.radius + 6;
+          const arrowPos = toVec.clone().sub(unitEdge.clone().multiplyScalar(offset));
+
+          lo.arrowMesh.position.copy(arrowPos);
+          lo.arrowMesh.lookAt(toVec);
+          lo.arrowMesh.visible = true;
+          (lo.arrowMesh.material as THREE.MeshBasicMaterial).opacity = 1;
+        }
+      } else {
+        lo.arrowMesh.visible = false;
+        (lo.arrowMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      }
+    }
   });
 }
 
@@ -413,11 +474,30 @@ function isPrimaryPathEdge(
   return false;
 }
 
+function getPrimaryPathDirection(
+  sourceId: string,
+  targetId: string,
+  path: string[],
+): { fromId: string; toId: string } | null {
+  for (let i = 0; i < path.length - 1; i++) {
+    const fromId = path[i];
+    const toId = path[i + 1];
+    if (
+      (fromId === sourceId && toId === targetId) ||
+      (fromId === targetId && toId === sourceId)
+    ) {
+      return { fromId, toId };
+    }
+  }
+  return null;
+}
+
 export function setHighlighted(
   highlightedIds: Set<string>,
   nodeObjs: NodeObj[],
   linkObjs: LinkObj[],
   highlightPath: string[] = [],
+  isPathHideMode: boolean = false
 ) {
   const isAnyHighlighted = highlightedIds.size > 0;
 
@@ -436,10 +516,15 @@ export function setHighlighted(
       o.node.connections.includes(hid),
     );
 
-    o.mat.emissiveIntensity = isHov ? 1.4 : isConn ? 0.8 : 0.15;
-    o.mat.opacity = isHov ? 1 : isConn ? 0.85 : 0.12;
-    o.glowMat.opacity = isHov ? 0.28 : isConn ? 0.081 : 0.005;
-    if (spr) spr.opacity = isHov ? 1 : isConn ? 0.8 : 0.15;
+    const bgEmissive = isPathHideMode ? 0.0 : 0.15;
+    const bgOpacity = isPathHideMode ? 0.0 : 0.12;
+    const bgGlowOpacity = isPathHideMode ? 0.0 : 0.005;
+    const bgSprOpacity = isPathHideMode ? 0.0 : 0.15;
+
+    o.mat.emissiveIntensity = isHov ? 1.4 : isConn ? 0.8 : bgEmissive;
+    o.mat.opacity = isHov ? 1 : isConn ? 0.85 : bgOpacity;
+    o.glowMat.opacity = isHov ? 0.28 : isConn ? 0.081 : bgGlowOpacity;
+    if (spr) spr.opacity = isHov ? 1 : isConn ? 0.8 : bgSprOpacity;
   });
 
   linkObjs.forEach((lo) => {
@@ -475,12 +560,11 @@ export function setHighlighted(
       }
     } else {
       lo.line.material = lo.mat;
-      lo.mat.opacity = 0.04;
+      lo.mat.opacity = isPathHideMode ? 0.0 : 0.04;
     }
   });
 }
 
-/** Combine path highlight with hover: path as base, hover overlaid. When no path, delegates to setHoveredNode. */
 export function setHighlightedWithHover(
   highlightedIds: Set<string>,
   highlightPath: string[],
@@ -488,6 +572,7 @@ export function setHighlightedWithHover(
   hovObj: NodeObj | LinkObj | null,
   nodeObjs: NodeObj[],
   linkObjs: LinkObj[],
+  isPathHideMode: boolean = false
 ): NodeObj | LinkObj | null {
   if (highlightedIds.size === 0) {
     return setHoveredNode(hoverHit, hovObj, nodeObjs, linkObjs);
@@ -500,10 +585,16 @@ export function setHighlightedWithHover(
     const isConn = Array.from(highlightedIds).some((hid) =>
       o.node.connections.includes(hid),
     );
-    let emissive = isHov ? 1.4 : isConn ? 0.8 : 0.15;
-    let opacity = isHov ? 1 : isConn ? 0.85 : 0.12;
-    let glowOpacity = isHov ? 0.28 : isConn ? 0.081 : 0.005;
-    let sprOpacity = isHov ? 1 : isConn ? 0.8 : 0.15;
+
+    const bgEmissive = isPathHideMode ? 0.0 : 0.15;
+    const bgOpacity = isPathHideMode ? 0.0 : 0.12;
+    const bgGlowOpacity = isPathHideMode ? 0.0 : 0.005;
+    const bgSprOpacity = isPathHideMode ? 0.0 : 0.15;
+
+    let emissive = isHov ? 1.4 : isConn ? 0.8 : bgEmissive;
+    let opacity = isHov ? 1 : isConn ? 0.85 : bgOpacity;
+    let glowOpacity = isHov ? 0.28 : isConn ? 0.081 : bgGlowOpacity;
+    let sprOpacity = isHov ? 1 : isConn ? 0.8 : bgSprOpacity;
 
     if (hoverHit && "node" in hoverHit) {
       const isHoverSelf = o.node.id === hoverHit.node.id;
@@ -559,7 +650,7 @@ export function setHighlightedWithHover(
       }
     } else {
       lo.line.material = lo.mat;
-      lo.mat.opacity = 0.04;
+      lo.mat.opacity = isPathHideMode ? 0.0 : 0.04;
     }
 
     if (hoverHit && "source" in hoverHit) {

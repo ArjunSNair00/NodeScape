@@ -3,6 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GraphData, GraphHandle } from "../types/graph";
 import { AI_PROMPT, EXAMPLE_TOPICS } from "../data/defaultGraph";
 import { parseGraphJSON, tryRepairAndParse } from "../lib/validateGraph";
+import {
+  getSupabaseAccessToken,
+  getSupabaseUser,
+  signInWithPassword,
+  signOutSupabase,
+  signUpWithPassword,
+  subscribeToAuthChanges,
+} from "../lib/supabaseAuth";
 
 interface Props {
   open: boolean;
@@ -1121,7 +1129,9 @@ function DataEditTab({
 }
 
 // ── AI Chat Tab ───────────────────────────────────────────────────────────────
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
+const AI_FUNCTION_URL =
+  "https://trxpofoucgdytlhovrkq.supabase.co/functions/v1/ai";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 const SYSTEM_PROMPT = `You are a knowledge-graph JSON generator. The user gives a topic (and optionally extra instructions like node count). You MUST reply with a single, valid JSON object — no markdown, no explanation, no text outside the JSON.
@@ -1173,11 +1183,19 @@ function AiChatTab({
   const [isStreaming, setIsStreaming] = useState(false);
   const [aiMode, setAiMode] = useState<AIMode>("generate");
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
+  const [authToast, setAuthToast] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastUpdateRef = useRef<number>(0);
   const lastNodeCountRef = useRef<number>(0);
+  const manualSignOutRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1186,6 +1204,90 @@ function AiChatTab({
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  const refreshAuthUser = useCallback(async () => {
+    const user = await getSupabaseUser();
+    setSignedInEmail(user?.email ?? null);
+    setIsAuthChecking(false);
+  }, []);
+
+  useEffect(() => {
+    refreshAuthUser();
+  }, [refreshAuthUser]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((event, session) => {
+      setSignedInEmail(session?.user?.email ?? null);
+
+      if (event === "SIGNED_OUT") {
+        const wasManual = manualSignOutRef.current;
+        manualSignOutRef.current = false;
+        if (!wasManual) {
+          setAuthToast("Session expired, please sign in again.");
+        }
+      }
+
+      if (event === "TOKEN_REFRESHED") {
+        setAuthError(null);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!authToast) return;
+    const t = setTimeout(() => setAuthToast(null), 2800);
+    return () => clearTimeout(t);
+  }, [authToast]);
+
+  const handleSignIn = async () => {
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError("Enter email and password.");
+      return;
+    }
+    setIsAuthLoading(true);
+    setAuthError(null);
+    const { error } = await signInWithPassword(authEmail.trim(), authPassword);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthPassword("");
+      await refreshAuthUser();
+    }
+    setIsAuthLoading(false);
+  };
+
+  const handleSignUp = async () => {
+    if (!authEmail.trim() || !authPassword) {
+      setAuthError("Enter email and password.");
+      return;
+    }
+    setIsAuthLoading(true);
+    setAuthError(null);
+    const { error } = await signUpWithPassword(authEmail.trim(), authPassword);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthPassword("");
+      setAuthError("Account created. Check email if confirmation is enabled.");
+      await refreshAuthUser();
+    }
+    setIsAuthLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    setIsAuthLoading(true);
+    setAuthError(null);
+    manualSignOutRef.current = true;
+    const { error } = await signOutSupabase();
+    if (error) {
+      setAuthError(error.message);
+      manualSignOutRef.current = false;
+    }
+    await refreshAuthUser();
+    setIsAuthLoading(false);
+  };
 
   const sendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -1224,31 +1326,48 @@ function AiChatTab({
     let fullBuffer = "";
 
     try {
-      const response = await fetch(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages: [
-              { role: "system", content: contextualPrompt },
-              { role: "user", content: userText },
-            ],
-            response_format: { type: "json_object" },
-            stream: true,
-          }),
-          signal: controller.signal,
+      if (!SUPABASE_ANON_KEY) {
+        throw new Error("Missing VITE_SUPABASE_ANON_KEY in .env");
+      }
+      const userAccessToken = await getSupabaseAccessToken();
+      console.log("[AI] token present:", !!userAccessToken, "| prefix:", userAccessToken?.slice(0, 20));
+      if (!userAccessToken) {
+        throw new Error("Session expired — please sign out and sign back in.");
+      }
+
+      const response = await fetch(AI_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${userAccessToken}`,
         },
-      );
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [
+            { role: "system", content: contextualPrompt },
+            { role: "user", content: userText },
+          ],
+          response_format: { type: "json_object" },
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => null);
+        const errText = await response.text();
+        let errData: any = null;
+        try {
+          errData = errText ? JSON.parse(errText) : null;
+        } catch {
+          errData = null;
+        }
         throw new Error(
-          errData?.error?.message || `API error ${response.status}`,
+          errData?.error?.message ||
+            errData?.error ||
+            errData?.message ||
+            errText ||
+            `API error ${response.status}`,
         );
       }
 
@@ -1403,6 +1522,86 @@ function AiChatTab({
         className="flex-1 overflow-y-auto p-4 space-y-3"
         style={{ minHeight: 0 }}
       >
+        <div className="border border-border rounded-xl bg-surface2 p-3">
+          {isAuthChecking ? (
+            // Skeleton placeholder — prevents the sign-in form flashing before
+            // the initial async session check resolves.
+            <div className="h-7 rounded bg-surface animate-pulse" />
+          ) : signedInEmail ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] text-muted2 truncate">
+                Signed in as <span className="text-text">{signedInEmail}</span>
+              </p>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={isAuthLoading}
+                className="text-[10px] px-2.5 py-1 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+              >
+                {isAuthLoading ? "..." : "Sign out"}
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] text-muted2 mb-2">
+                Sign in to use AI generation.
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="Email"
+                  className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
+                />
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Password"
+                  className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSignIn}
+                    disabled={isAuthLoading}
+                    className="flex-1 text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSignUp}
+                    disabled={isAuthLoading}
+                    className="flex-1 text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
+                  >
+                    Sign up
+                  </button>
+                </div>
+                {authError && (
+                  <p className="text-[10px] text-[#f87171] leading-relaxed">
+                    {authError}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {authToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="text-[10px] rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 text-[#f87171] px-3 py-2"
+            >
+              {authToast}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -1509,8 +1708,12 @@ function AiChatTab({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={`Type a topic to ${aiMode}…`}
-            disabled={isStreaming}
+            placeholder={
+              signedInEmail
+                ? `Type a topic to ${aiMode}…`
+                : "Sign in first to use AI"
+            }
+            disabled={isStreaming || !signedInEmail}
             className="flex-1 min-w-0 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
           />
 
@@ -1542,7 +1745,7 @@ function AiChatTab({
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || !signedInEmail}
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent text-white disabled:opacity-30 hover:bg-[#6a58e8] transition-all duration-200 disabled:hover:bg-accent"
               title="Send"
             >
