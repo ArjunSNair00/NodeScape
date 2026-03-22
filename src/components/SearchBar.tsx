@@ -34,6 +34,7 @@ export function SearchBar({
 }: SearchBarProps) {
   const isDark = theme === "dark";
   const [isFocused, setIsFocused] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -119,28 +120,60 @@ export function SearchBar({
                 </div>
             )}
             </div>
-            
-            <div className={`flex flex-col items-start justify-center gap-1.5 px-3 py-1.5 rounded-xl border backdrop-blur-md shadow-sm transition-all duration-300 ${
-                isDark ? "border-border2/60 bg-surface/50" : "border-border/60 bg-surface/50"
-            }`}>
-              <label className="flex items-center gap-2 cursor-pointer text-[11px] text-text/80 hover:text-text">
-                  <input 
-                      type="checkbox" 
-                      className="rounded border-border2/60 bg-surface/50 text-accent focus:ring-accent"
-                      checked={searchContent}
-                      onChange={(e) => onSearchContentChange(e.target.checked)}
-                  />
-                  Search Content
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer text-[11px] text-text/80 hover:text-text">
-                  <input 
-                      type="checkbox" 
-                      className="rounded border-border2/60 bg-surface/50 text-accent focus:ring-accent"
-                      checked={highlightNeighbours}
-                      onChange={(e) => onHighlightNeighboursChange(e.target.checked)}
-                  />
-                  Highlight Neighbours
-              </label>
+
+            {/* Cog toggle button */}
+            <div className="relative">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setShowOptions(!showOptions)}
+                className={`flex items-center justify-center w-10 h-10 rounded-2xl border backdrop-blur-md shadow-sm transition-all duration-300 ${
+                  showOptions
+                    ? "border-accent/40 text-accent bg-accent/10"
+                    : isDark
+                      ? "border-border2/60 bg-surface/50 text-muted hover:bg-surface/80 hover:border-border2/80"
+                      : "border-border/60 bg-surface/50 text-muted hover:bg-surface/80 hover:border-border/80"
+                }`}
+                title="Search options"
+              >
+                <svg
+                  className="w-4 h-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+              </button>
+
+              {/* Options popup — positioned absolutely below the cog */}
+              {showOptions && (
+                <div className={`absolute top-12 left-0 z-50 flex flex-col items-start justify-center gap-1.5 px-3 py-2 rounded-xl border backdrop-blur-md shadow-lg transition-all duration-200 ${
+                    isDark ? "border-border2/60 bg-surface/90" : "border-border/60 bg-surface/90"
+                }`}>
+                  <label className="flex items-center gap-2 cursor-pointer text-[11px] text-text/80 hover:text-text whitespace-nowrap">
+                      <input 
+                          type="checkbox" 
+                          className="rounded border-border2/60 bg-surface/50 text-accent focus:ring-accent"
+                          checked={searchContent}
+                          onChange={(e) => onSearchContentChange(e.target.checked)}
+                      />
+                      Search Content
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-[11px] text-text/80 hover:text-text whitespace-nowrap">
+                      <input 
+                          type="checkbox" 
+                          className="rounded border-border2/60 bg-surface/50 text-accent focus:ring-accent"
+                          checked={highlightNeighbours}
+                          onChange={(e) => onHighlightNeighboursChange(e.target.checked)}
+                      />
+                      Highlight Neighbours
+                  </label>
+                </div>
+              )}
             </div>
         </div>
 

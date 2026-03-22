@@ -397,16 +397,24 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       }
     }
 
-    const focusConnected = hoveredNodeIdRef.current
+    const hoverConnected = hoveredNodeIdRef.current
       ? findConnectedSet(hoveredNodeIdRef.current)
       : externalHoverNodeId
         ? findConnectedSet(externalHoverNodeId)
-        : activeNodeId
-          ? findConnectedSet(activeNodeId)
-          : null;
+        : null;
+    const activeConnected = activeNodeId
+      ? findConnectedSet(activeNodeId)
+      : null;
+
+    // Union of all visible connections — hover ADDS visibility without removing it
+    const focusConnected = new Set<string>();
+    if (hoverConnected) hoverConnected.forEach((id) => focusConnected.add(id));
+    if (activeConnected) activeConnected.forEach((id) => focusConnected.add(id));
+    const focusConnectedOrNull = focusConnected.size > 0 ? focusConnected : null;
+
     const emphasisSet = new Set<string>(highlightSet);
-    if (focusConnected) {
-      focusConnected.forEach((id) => emphasisSet.add(id));
+    if (focusConnectedOrNull) {
+      focusConnectedOrNull.forEach((id) => emphasisSet.add(id));
     }
     const hasEmphasis = emphasisSet.size > 0;
 
@@ -423,9 +431,9 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       const isPrimary =
         inPath && isPrimaryPathEdge(e.a.id, e.b.id, highlightPath);
       const inConnected =
-        focusConnected != null &&
-        focusConnected.has(e.a.id) &&
-        focusConnected.has(e.b.id);
+        focusConnectedOrNull != null &&
+        focusConnectedOrNull.has(e.a.id) &&
+        focusConnectedOrNull.has(e.b.id);
 
       let alpha = hasEmphasis ? (inPath || inConnected ? 0.9 : 0.08) : 0.45;
       let isDashed = false;
@@ -435,8 +443,27 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         if (isPrimary) {
           alpha = 1.0;
           width = 2.2;
-        } else if (inConnected || (focusConnected != null && (focusConnected.has(e.a.id) || focusConnected.has(e.b.id)))) {
-          // Hover/focus highlights edges connected to hovered node
+        } else if (isPathHideMode) {
+          // In hide mode: only show edge if BOTH endpoints are visible
+          const aIsPathNode = highlightPath.includes(e.a.id);
+          const bIsPathNode = highlightPath.includes(e.b.id);
+          const aIsPathNeighbor = !aIsPathNode && highlightPath.some((pid) => e.a.connections.includes(pid));
+          const bIsPathNeighbor = !bIsPathNode && highlightPath.some((pid) => e.b.connections.includes(pid));
+          const aIsVisible = aIsPathNode || aIsPathNeighbor || (focusConnectedOrNull?.has(e.a.id) ?? false);
+          const bIsVisible = bIsPathNode || bIsPathNeighbor || (focusConnectedOrNull?.has(e.b.id) ?? false);
+
+          if (aIsVisible && bIsVisible) {
+            const hoverEdge = focusConnectedOrNull != null &&
+              (focusConnectedOrNull.has(e.a.id) || focusConnectedOrNull.has(e.b.id)) &&
+              !aIsPathNode && !bIsPathNode && !aIsPathNeighbor && !bIsPathNeighbor;
+            isDashed = true;
+            alpha = hoverEdge ? 0.6 : 0.5;
+            width = hoverEdge ? 1.5 : 1.25;
+          } else {
+            alpha = 0.0;
+            width = 0;
+          }
+        } else if (inConnected || (focusConnectedOrNull != null && (focusConnectedOrNull.has(e.a.id) || focusConnectedOrNull.has(e.b.id)))) {
           isDashed = true;
           alpha = 0.6;
           width = 1.5;
@@ -445,7 +472,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           alpha = 0.5;
           width = 1.25;
         } else {
-          alpha = isPathHideMode ? 0.0 : 0.1;
+          alpha = 0.1;
           width = 1.0;
         }
       } else {
@@ -465,7 +492,7 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
         g.lineTo(e.b.x, e.b.y);
       }
 
-      if (isPathMode && (isPrimary || (inPath && isVisitedEdge(e.a.id, e.b.id, highlightPath)))) {
+      if (isPathMode && (!isPathHideMode ? (isPrimary || (inPath && isVisitedEdge(e.a.id, e.b.id, highlightPath))) : isPrimary)) {
         const bidir = isBidirectionalEdge(e.a.id, e.b.id, highlightPath);
 
         if (bidir) {
@@ -508,8 +535,12 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
 
       const isSelected = activeNodeId === n.id || selectedNodeIdsRef.current.has(n.id);
       const isHovered = hoveredNodeIdRef.current === n.id || externalHoverNodeId === n.id;
+      const isVisitedNode = highlightPath.includes(n.id);
       const inPath = highlightSet.has(n.id);
-      const inConnected = focusConnected?.has(n.id) ?? false;
+      const inConnected = focusConnectedOrNull?.has(n.id) ?? false;
+      const isConnectedToPath = isPathMode && highlightPath.some(
+        (pid) => n.connections.includes(pid),
+      );
 
       let alpha = hasEmphasis ? (inPath || inConnected ? 1 : colors.dim) : 1.0;
 
@@ -524,20 +555,25 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
               : 0.8;
 
       if (isPathMode && hasEmphasis) {
-        if (isHovered) {
+        if (isVisitedNode || isConnectedToPath) {
+          // Path nodes and their neighbors — always visible
           alpha = 1.0;
-          ringAlpha = 0.6;
-        } else if (inPath) {
-          alpha = 1.0;
-          ringAlpha = 0.4;
+          ringAlpha = isVisitedNode ? 0.4 : 0.2;
         } else if (inConnected) {
+          // Hover-connected — visible even in hide mode (hover overrides)
           alpha = 0.85;
           ringAlpha = 0.2;
         } else {
+          // Unrelated to path
           alpha = isPathHideMode ? 0.0 : 0.25;
           ringAlpha = isPathHideMode ? 0.0 : 0.08;
         }
       }
+
+      // Disable interactivity on hidden nodes
+      gfx.eventMode = alpha <= 0.05 ? "none" : "static";
+      gfx.cursor = alpha <= 0.05 ? "default" : "pointer";
+      gfx.alpha = alpha;
 
       gfx.clear();
 
@@ -545,6 +581,13 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
       if (isSelected) {
         gfx.beginFill(0x7c6af7, 0.45);
         gfx.drawCircle(0, 0, n.radius * 3.2);
+        gfx.endFill();
+      }
+
+      // Visited node: green ring
+      if (isVisitedNode && isPathMode && alpha > 0.05) {
+        gfx.beginFill(0x4ade80, 0.35);
+        gfx.drawCircle(0, 0, n.radius * 2.6);
         gfx.endFill();
       }
 
@@ -1023,6 +1066,10 @@ const True2DGraph = forwardRef<Graph2DHandle, Props>(function True2DGraph(
           const world = worldRef.current;
           if (world && appRef.current) {
             graphRef.current.nodes.forEach((sn) => {
+              const gfx = nodeGraphicsRef.current.get(sn.id);
+              // Skip hidden nodes (alpha <= 0.05)
+              if (gfx && gfx.alpha <= 0.05) return;
+
               const sx = sn.x * world.scale.x + world.x;
               const sy = sn.y * world.scale.y + world.y;
 

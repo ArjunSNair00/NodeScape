@@ -654,6 +654,26 @@ function ControlsTab({
         </ActionBtn>
       </BtnRow>
 
+      <BtnRow label="Undo History">
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={10}
+            max={500}
+            step={10}
+            value={Number(sessionStorage.getItem("undoMaxHistory") || "100")}
+            onChange={(e) => {
+              const val = e.target.value;
+              sessionStorage.setItem("undoMaxHistory", val);
+            }}
+            className="w-20 accent-accent"
+          />
+          <span className="text-[10px] text-muted w-8 text-right">
+            {sessionStorage.getItem("undoMaxHistory") || "100"}
+          </span>
+        </div>
+      </BtnRow>
+
       <BtnRow label="Expand Instead of Replace">
         <ActionBtn
           onClick={() => setExpandReplace(!expandReplace)}

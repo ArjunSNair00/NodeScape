@@ -153,21 +153,6 @@ export default function PageView({
         style={{ background: "rgba(8,8,16,0.94)" }}
       >
         <div className="flex items-center gap-4 px-7 py-3.5">
-          <button
-            onClick={onClose}
-            className="flex items-center gap-2 text-[11px] text-muted tracking-wider px-3.5 py-1.5 rounded-md border border-border hover:border-accent hover:text-accent hover:bg-accent/10 transition-all duration-200"
-          >
-            <svg
-              className="w-3 h-3"
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M8 2L4 6l4 4" />
-            </svg>
-            graph view
-          </button>
           {canGoBack && onBack && (
             <button
               onClick={onBack}
@@ -205,22 +190,22 @@ export default function PageView({
         </div>
         {/* Controls row: Lock Camera left, Path Mode + Clear Path right */}
         <div className="flex items-center justify-between gap-2 px-7 py-2.5 border-t border-border">
-          <button
-            onClick={() =>
-              isCameraLocked && lockedToNodeId === node.id
-                ? onUnlockCamera?.()
-                : onLockCamera?.(node.id)
-            }
-            className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
-              isCameraLocked && lockedToNodeId === node.id
-                ? "border-accent text-accent bg-accent/10"
-                : "border-border text-muted hover:border-accent/60"
-            }`}
-          >
-            Lock Camera{" "}
-            {isCameraLocked && lockedToNodeId === node.id ? "ON" : "OFF"}
-          </button>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                isCameraLocked && lockedToNodeId === node.id
+                  ? onUnlockCamera?.()
+                  : onLockCamera?.(node.id)
+              }
+              className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
+                isCameraLocked && lockedToNodeId === node.id
+                  ? "border-accent text-accent bg-accent/10"
+                  : "border-border text-muted hover:border-accent/60"
+              }`}
+            >
+              Lock Camera{" "}
+              {isCameraLocked && lockedToNodeId === node.id ? "ON" : "OFF"}
+            </button>
             <button
               onClick={onTogglePathMode ?? (() => {})}
               className={`flex items-center gap-1.5 text-[10px] tracking-widest px-2.5 py-1 rounded border transition-all ${
@@ -262,8 +247,25 @@ export default function PageView({
               </button>
             )}
           </div>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-7 h-7 rounded border border-[#f87171]/30 text-[#f87171] hover:border-[#f87171] hover:bg-[#f87171]/10 transition-all"
+            title="Close"
+          >
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <line x1="2" y1="2" x2="10" y2="10" />
+              <line x1="10" y1="2" x2="2" y2="10" />
+            </svg>
+          </button>
         </div>
-      </div>
+        </div>
 
       {/* Body */}
       <div className="max-w-2xl mx-auto w-full px-10 py-14 pb-20">

@@ -50,6 +50,95 @@ export default function App() {
   const [searchContent, setSearchContent] = useState(true);
   const [highlightNeighbours, setHighlightNeighbours] = useState(true);
 
+  // Undo/Redo system
+  const [maxHistory, setMaxHistory] = useState(
+    () => parseInt(sessionStorage.getItem("undoMaxHistory") || "100", 10),
+  );
+  type HistoryEntry = {
+    graphData: GraphData;
+    highlightPath: string[];
+    activePage: NodeData | null;
+  };
+  const historyRef = useRef<HistoryEntry[]>([]);
+  const historyIndexRef = useRef(-1);
+  const skipHistoryRef = useRef(false);
+
+  const captureSnapshot = (): HistoryEntry => {
+    // Get fresh positions from engine if available
+    const fresh = graphRef.current?.getFreshData() || graph2DRef.current?.getFreshData();
+    return {
+      graphData: JSON.parse(JSON.stringify(fresh || graphData)),
+      highlightPath: [...highlightPath],
+      activePage: activePage ? { ...activePage } : null,
+    };
+  };
+
+  const pushHistory = () => {
+    if (skipHistoryRef.current) return;
+    const entry = captureSnapshot();
+    historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+    historyRef.current.push(entry);
+    if (historyRef.current.length > maxHistory) {
+      historyRef.current = historyRef.current.slice(historyRef.current.length - maxHistory);
+    }
+    historyIndexRef.current = historyRef.current.length - 1;
+  };
+
+  const restoreSnapshot = (entry: HistoryEntry) => {
+    skipHistoryRef.current = true;
+    handleGraphChange(entry.graphData);
+    setHighlightPath(entry.highlightPath);
+    setActivePage(entry.activePage);
+    if (entry.activePage) {
+      setPageHistory([]);
+    }
+  };
+
+  const undo = () => {
+    if (historyRef.current.length < 2 || historyIndexRef.current < 1) return;
+    historyIndexRef.current--;
+    restoreSnapshot(historyRef.current[historyIndexRef.current]);
+  };
+
+  const redo = () => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    restoreSnapshot(historyRef.current[historyIndexRef.current]);
+  };
+
+  const canUndo = historyIndexRef.current > 0;
+  const canRedo = historyIndexRef.current < historyRef.current.length - 1;
+
+  const undoRef = useRef(undo);
+  const redoRef = useRef(redo);
+  undoRef.current = undo;
+  redoRef.current = redo;
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement)?.isContentEditable;
+      if (isInput) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undoRef.current();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redoRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Push initial state to history when graph data first loads
+  useEffect(() => {
+    if (view === "graph" && graphData.nodes.length > 0 && historyRef.current.length === 0) {
+      pushHistory();
+    }
+  }, [view, graphData.nodes.length]);
+
   const fuseRef = useRef<Fuse<NodeData> | null>(null);
 
   useEffect(() => {
@@ -61,6 +150,39 @@ export default function App() {
       ignoreLocation: true,
     });
   }, [graphData.nodes, searchContent]);
+
+  // Auto-push history when graphData or highlightPath changes
+  const prevGraphDataRef = useRef(graphData);
+  const prevHighlightPathRef = useRef(highlightPath);
+  useEffect(() => {
+    if (view !== "graph") return;
+
+    // Undo/redo restore — just reset the skip flag and update prev refs
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      prevGraphDataRef.current = graphData;
+      prevHighlightPathRef.current = highlightPath;
+      return;
+    }
+
+    // Skip if no history yet (initial push handles this)
+    if (historyRef.current.length === 0) {
+      prevGraphDataRef.current = graphData;
+      prevHighlightPathRef.current = highlightPath;
+      return;
+    }
+
+    const graphChanged =
+      JSON.stringify(graphData) !== JSON.stringify(prevGraphDataRef.current);
+    const pathChanged =
+      JSON.stringify(highlightPath) !==
+      JSON.stringify(prevHighlightPathRef.current);
+    if (graphChanged || pathChanged) {
+      pushHistory();
+      prevGraphDataRef.current = graphData;
+      prevHighlightPathRef.current = highlightPath;
+    }
+  }, [graphData, highlightPath, activePage, view]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim() || !fuseRef.current) return [];
@@ -198,6 +320,12 @@ export default function App() {
   const handleNodeSelect = (nodeId: string) => {
     const node = graphData.nodes.find((n) => n.id === nodeId);
     if (!node) return;
+
+    // Re-enable split mode if it was previously active
+    if (sessionStorage.getItem("splitModeWasActive") === "true") {
+      setIsSplitMode(true);
+      sessionStorage.removeItem("splitModeWasActive");
+    }
 
     // 1. Update PageView / active page
     setActivePage(node);
@@ -403,6 +531,8 @@ export default function App() {
                       onClose={() => {
                         setActivePage(null);
                         setPageHistory([]);
+                        setIsSplitMode(false);
+                        sessionStorage.setItem("splitModeWasActive", "true");
                       }}
                       onNodeSelect={handleNodeSelect}
                       onBack={handleBackPage}
@@ -494,6 +624,7 @@ export default function App() {
                       const next = !isSplitMode;
                       setIsSplitMode(next);
                       sessionStorage.setItem("splitMode", String(next));
+                      if (!next) sessionStorage.removeItem("splitModeWasActive");
                     }}
                     onToggleTrue2D={() => {
                       setIsTrue2D(false);
@@ -510,6 +641,7 @@ export default function App() {
                     sidebarOpen={sidebarOpen}
                     isEditMode={isEditMode}
                     theme={theme}
+                    onBeforeMutate={pushHistory}
                     onNodeSelect={handleNodeSelect}
                     onToggleSidebar={() => setSidebarOpen((o) => !o)}
                     onToggleTheme={toggleTheme}
@@ -519,6 +651,7 @@ export default function App() {
                       const next = !isSplitMode;
                       setIsSplitMode(next);
                       sessionStorage.setItem("splitMode", String(next));
+                      if (!next) sessionStorage.removeItem("splitModeWasActive");
                     }}
                     onToggleTrue2D={() => {
                       setIsTrue2D(true);

@@ -46,6 +46,7 @@ interface Props {
   sidebarOpen: boolean;
   isEditMode: boolean;
   theme: Theme;
+  onBeforeMutate?: () => void;
   onNodeSelect: (nodeId: string) => void;
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
@@ -177,6 +178,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
     sidebarOpen,
     isEditMode,
     theme,
+    onBeforeMutate,
     onNodeSelect,
     onToggleSidebar,
     onToggleEditMode,
@@ -680,23 +682,29 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       raycasterRef.current.params.Line.threshold = 4;
       raycasterRef.current.setFromCamera(mouse2Ref.current, cameraRef.current);
 
-      // Intersect nodes first
+      // Intersect nodes first (skip hidden nodes with near-zero opacity)
+      const visibleNodes = nodeObjsRef.current.filter(
+        (o) => o.mat.opacity > 0.05,
+      );
       const nHits = raycasterRef.current.intersectObjects(
-        nodeObjsRef.current.map((o) => o.mesh),
+        visibleNodes.map((o) => o.mesh),
       );
       if (nHits.length)
         return (
-          nodeObjsRef.current.find((o) => o.mesh === nHits[0].object) ?? null
+          visibleNodes.find((o) => o.mesh === nHits[0].object) ?? null
         );
 
-      // Then intersect links
+      // Then intersect links (skip hidden links)
       if (edgeHoverEnabledRef.current) {
+        const visibleLinks = linkObjsRef.current.filter(
+          (o) => o.mat.opacity > 0.05,
+        );
         const lHits = raycasterRef.current.intersectObjects(
-          linkObjsRef.current.map((o) => o.line),
+          visibleLinks.map((o) => o.line),
         );
         if (lHits.length)
           return (
-            linkObjsRef.current.find((o) => o.line === lHits[0].object) ?? null
+            visibleLinks.find((o) => o.line === lHits[0].object) ?? null
           );
       }
 
@@ -995,6 +1003,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           hoverIsNode && o.node.id === (hovObjRef.current as NodeObj).node.id;
         const isSelected = selectedNodeIdsRef.current.has(o.node.id);
         const isActiveNode = activeNodeIdRef.current === o.node.id;
+        const isVisited = isPathModeRef.current && highlightPathRef.current.includes(o.node.id);
 
         if (isActiveNode) {
           o.glowMat.opacity = 0.7 + 0.35 * Math.sin(tRef.current * 3.0);
@@ -1004,28 +1013,38 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           o.glowMat.opacity = 0.5 + 0.2 * Math.sin(tRef.current * 4.0);
           o.glowMat.color.setHex(0x7c6af7); // Accent color override
           o.mesh.scale.setScalar(o.animScale ?? 1);
+        } else if (isVisited && !isHoveredNode) {
+          // Visited node: green ring
+          o.glowMat.opacity = 0.3 + 0.1 * Math.sin(tRef.current * 2.0);
+          o.glowMat.color.setHex(0x4ade80); // Green
+          o.mesh.scale.setScalar(o.animScale ?? 1);
         } else if (!isHoveredNode) {
-          o.mesh.scale.setScalar(o.animScale ?? 1);
-          const p = 1 + 0.18 * Math.sin(tRef.current * 1.6 + i * 0.9);
-          let base = 0.055;
+          // Skip glow update for hidden nodes
+          if (o.mat.opacity < 0.05) {
+            o.glowMat.opacity = 0;
+          } else {
+            o.mesh.scale.setScalar(o.animScale ?? 1);
+            const p = 1 + 0.18 * Math.sin(tRef.current * 1.6 + i * 0.9);
+            let base = 0.055;
 
-          if (hoverIsNode) {
-            base = (hovObjRef.current as NodeObj).node.connections.includes(
-              o.node.id,
-            )
-              ? 0.1
-              : 0.01;
-          } else if (hoverIsLink) {
-            const l = hovObjRef.current as LinkObj;
-            base =
-              o.node.id === l.source.id || o.node.id === l.target.id
-                ? 0.15
+            if (hoverIsNode) {
+              base = (hovObjRef.current as NodeObj).node.connections.includes(
+                o.node.id,
+              )
+                ? 0.1
                 : 0.01;
-          }
+            } else if (hoverIsLink) {
+              const l = hovObjRef.current as LinkObj;
+              base =
+                o.node.id === l.source.id || o.node.id === l.target.id
+                  ? 0.15
+                  : 0.01;
+            }
 
-          o.glowMat.opacity = base * p;
-          o.glowMat.color.set(o.mat.color); // Restore original color if it was selected previously
-          o.mesh.scale.setScalar(o.animScale ?? 1);
+            o.glowMat.opacity = base * p;
+            o.glowMat.color.set(o.mat.color);
+            o.mesh.scale.setScalar(o.animScale ?? 1);
+          }
         } else {
           o.mesh.scale.setScalar(o.animScale ?? 1);
         }
@@ -1760,6 +1779,10 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
           const v = new THREE.Vector3();
 
           simNodesRef.current.forEach((sn) => {
+            // Skip hidden nodes
+            const nodeObj = nodeObjsRef.current.find((o) => o.node.id === sn.id);
+            if (nodeObj && nodeObj.mat.opacity < 0.05) return;
+
             v.set(sn.x, sn.y, sn.z);
             v.project(cam);
 
@@ -2418,6 +2441,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
       },
 
       removeNodes(ids) {
+        onBeforeMutate?.();
         engineRef.current?.removeNodes(ids);
       },
 
@@ -2655,11 +2679,23 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
         </svg>
       </button>
 
-      {/* Clear Graph button */}
+      {/* Clear/Delete button */}
       <button
-        onClick={() => setShowClearConfirm(true)}
+        onClick={() => {
+          const selectedCount = selectedNodeIdsRef.current.size;
+          if (selectedCount > 0) {
+            // Delete selected nodes
+            onBeforeMutate?.();
+            const ids = Array.from(selectedNodeIdsRef.current);
+            engineRef.current?.removeNodes(ids);
+            selectedNodeIdsRef.current.clear();
+          } else {
+            // No selection — show full clear confirmation
+            setShowClearConfirm(true);
+          }
+        }}
         className={`absolute top-14 left-5 z-40 flex items-center justify-center p-2 rounded-md border border-border2 bg-surface/90 backdrop-blur-md text-muted2 hover:border-[#f87171] hover:text-[#f87171] hover:bg-[#f87171]/10 transition-all duration-300 ${leftSidebarOpen || isLeftSidebarPinned ? "opacity-0 pointer-events-none -translate-x-4" : "opacity-100 translate-x-0"}`}
-        title="Clear Graph"
+        title={selectedNodeIdsRef.current.size > 0 ? `Delete ${selectedNodeIdsRef.current.size} selected node${selectedNodeIdsRef.current.size > 1 ? "s" : ""}` : "Clear Graph"}
       >
         <svg
           className="w-4 h-4"
@@ -2748,6 +2784,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                 </button>
                 <button
                   onClick={() => {
+                    onBeforeMutate?.();
                     engineRef.current?.clearGraph();
                     hovObjRef.current = null;
                     draggedNodeRef.current = null;
@@ -3625,6 +3662,7 @@ const Graph3D = forwardRef<GraphHandle, Props>(function Graph3D(
                     <div className="h-[1px] bg-border2 my-1 mx-2" />
                     <button
                       onClick={() => {
+                        onBeforeMutate?.();
                         engineRef.current?.removeNode(
                           contextMenu.hitNodeId as string,
                         );
