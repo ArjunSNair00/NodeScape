@@ -1,4 +1,4 @@
-<h1 align="center">🌌 NodeScape v1.0.0</h1>
+<h1 align="center">🌌 NodeScape v1.1.0</h1>
 </p>
 <p align="center">
   <i>"Explore knowledge like a galaxy of interconnected ideas."</i>
@@ -548,6 +548,52 @@ Nodes can dynamically generate:
 ---
 
 The primary focus is anything that improves the core mechanism: understanding, navigation, and learning flow.
+
+---
+
+# 📋 Release Notes
+
+## v1.1.0
+
+### AI & File Handling
+- Multi-file attachment (PDF, Markdown, Text) with drag-and-drop
+- Large file chunking — PDFs split into 8K chunks, processed sequentially
+- Dual model selection — `llama-3.3-70b-versatile` for topics, `llama-3.1-8b-instant` for files/long prompts
+- PDF attachment behind feature flag (`VITE_ENABLE_PDF_ATTACHMENTS`)
+- Generation stage indicators (Connecting/Streaming/Parsing/Rendering) with live node counter
+
+### Graph Interaction
+- Undo/redo system (Ctrl+Z/Y) with configurable history (default 100)
+- Directional arrows on all visited path edges with bidirectional support
+- Graph growth animation toggle + replay growth button (BFS order)
+- Green ring for visited nodes in path mode (2D and 3D)
+- Hide Ambient mode matching 3D behavior; hidden nodes non-interactive
+- Trash button deletes selected nodes or clears all
+
+### UI Overhaul
+- Red close button in node content view (closes split screen, remembers mode)
+- Lock camera moved next to Path Mode; smooth lerp, single-pan disengage
+- Search options behind cog toggle popup
+- Marquee tool repositioned to top-right toolbar
+- 2D state (positions, physics) persists across mode switches
+
+### Bug Fixes
+- Fix hover neighbor highlighting when path mode is OFF
+- Fix hover showing dotted lines on primary path edges
+- Fix node click not opening content
+- Fix bidirectional arrow rendering (2D and 3D)
+- Fix hidden node glow visibility in 3D
+- Fix edge visibility in hide ambient mode
+- Fix lock camera panning requiring two drags
+
+## v1.0.0
+
+- Initial release with 3D/2D graph visualization
+- AI chat for knowledge graph generation (Supabase Edge Function + Groq)
+- Path Mode with breadcrumb navigation
+- Edit Mode for manual graph creation
+- Glassmorphic UI with dark/light themes
+- Local storage graph library
 
 ---
 

@@ -301,7 +301,7 @@ export default function HomePage({ records, theme, onOpen, onCreate, onDelete, o
             <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
           </div>
           <span className="text-[22px] font-semibold text-text tracking-wide leading-none">NodeScape</span>
-          <span className="text-[10px] text-muted tracking-widest border border-border px-2 py-0.5 rounded-full">v1.0.0</span>
+          <span className="text-[10px] text-muted tracking-widest border border-border px-2 py-0.5 rounded-full">v1.1.0</span>
         </div>
 
         {/* Right — actions */}
