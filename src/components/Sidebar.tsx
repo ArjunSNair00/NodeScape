@@ -1175,6 +1175,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_MODEL_FAST = "llama-3.1-8b-instant";
 const LONG_PROMPT_THRESHOLD = 200;
+const ENABLE_PDF_ATTACHMENTS = import.meta.env.VITE_ENABLE_PDF_ATTACHMENTS === "true";
 
 const SYSTEM_PROMPT = `You are a knowledge-graph JSON generator. The user gives a topic (and optionally extra instructions like node count). You MUST reply with a single, valid JSON object — no markdown, no explanation, no text outside the JSON.
 
@@ -1995,107 +1996,108 @@ function AiChatTab({
       )}
 
       {/* File attachment chips — shown above input */}
-      <AnimatePresence>
-        {attachedFiles.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="px-4 pb-1.5 flex flex-wrap gap-1.5"
-          >
-            {attachedFiles.map((file, i) => (
-              <motion.div
-                key={file.name + i}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] border ${
-                  file.error
-                    ? "bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]"
-                    : file.parsing
-                      ? "bg-accent/10 border-accent/30 text-accent"
-                      : "bg-surface2 border-border text-muted2"
-                }`}
-              >
-                {/* File icon */}
-                <svg
-                  className="w-3 h-3 flex-shrink-0"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+      {ENABLE_PDF_ATTACHMENTS && (
+        <AnimatePresence>
+          {attachedFiles.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="px-4 pb-1.5 flex flex-wrap gap-1.5"
+            >
+              {attachedFiles.map((file, i) => (
+                <motion.div
+                  key={file.name + i}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] border ${
+                    file.error
+                      ? "bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]"
+                      : file.parsing
+                        ? "bg-accent/10 border-accent/30 text-accent"
+                        : "bg-surface2 border-border text-muted2"
+                  }`}
                 >
-                  <path d="M8.5 1.5H3.5A1.5 1.5 0 002 3v8a1.5 1.5 0 001.5 1.5h7A1.5 1.5 0 0012 11V5.5L8.5 1.5z" />
-                  <polyline points="8.5 1.5 8.5 5.5 12 5.5" />
-                </svg>
-
-                {/* Filename / status */}
-                {file.parsing ? (
-                  <span className="animate-pulse">
-                    {file.name}
-                    <span className="inline-block ml-1 animate-spin">⏳</span>
-                  </span>
-                ) : file.error ? (
-                  <span title={file.error}>{file.name} — error</span>
-                ) : (
-                  <span>{file.name}</span>
-                )}
-
-                {/* Remove button */}
-                <button
-                  type="button"
-                  onClick={() => removeFile(i)}
-                  className="ml-0.5 hover:opacity-80 transition-opacity"
-                >
+                  {/* File icon */}
                   <svg
-                    className="w-2.5 h-2.5"
-                    viewBox="0 0 10 10"
+                    className="w-3 h-3 flex-shrink-0"
+                    viewBox="0 0 14 14"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth="1.5"
                     strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    <line x1="2" y1="2" x2="8" y2="8" />
-                    <line x1="8" y1="2" x2="2" y2="8" />
+                    <path d="M8.5 1.5H3.5A1.5 1.5 0 002 3v8a1.5 1.5 0 001.5 1.5h7A1.5 1.5 0 0012 11V5.5L8.5 1.5z" />
+                    <polyline points="8.5 1.5 8.5 5.5 12 5.5" />
                   </svg>
-                </button>
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+                  {/* Filename / status */}
+                  {file.parsing ? (
+                    <span className="animate-pulse">
+                      {file.name}
+                      <span className="inline-block ml-1 animate-spin">⏳</span>
+                    </span>
+                  ) : file.error ? (
+                    <span title={file.error}>{file.name} — error</span>
+                  ) : (
+                    <span>{file.name}</span>
+                  )}
+
+                  {/* Remove button */}
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="ml-0.5 hover:opacity-80 transition-opacity"
+                  >
+                    <svg
+                      className="w-2.5 h-2.5"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    >
+                      <line x1="2" y1="2" x2="8" y2="8" />
+                      <line x1="8" y1="2" x2="2" y2="8" />
+                    </svg>
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* Input area */}
       <div
         className="relative border-t border-border flex-shrink-0"
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
+        onDragOver={ENABLE_PDF_ATTACHMENTS ? (e: any) => { e.preventDefault(); setDragOver(true); } : undefined}
+        onDragLeave={ENABLE_PDF_ATTACHMENTS ? () => setDragOver(false) : undefined}
+        onDrop={ENABLE_PDF_ATTACHMENTS ? (e: any) => {
           e.preventDefault();
           setDragOver(false);
           if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
-        }}
+        } : undefined}
       >
         {/* Drag-and-drop overlay */}
-        <AnimatePresence>
-          {dragOver && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 z-20 bg-accent/10 border-2 border-dashed border-accent flex items-center justify-center rounded"
-            >
-              <span className="text-[10px] text-accent tracking-widest uppercase">
-                Drop .pdf / .md / .txt here
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {ENABLE_PDF_ATTACHMENTS && (
+          <AnimatePresence>
+            {dragOver && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-20 bg-accent/10 border-2 border-dashed border-accent flex items-center justify-center rounded"
+              >
+                <span className="text-[10px] text-accent tracking-widest uppercase">
+                  Drop .pdf / .md / .txt here
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
 
         <AnimatePresence>
           {showModeDropdown && (
@@ -2125,17 +2127,19 @@ function AiChatTab({
         </AnimatePresence>
 
         {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.md,.txt,.text"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) handleFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
+        {ENABLE_PDF_ATTACHMENTS && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.md,.txt,.text"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) handleFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        )}
 
         <form
           className="flex items-center gap-2 px-4 py-3 min-w-0"
@@ -2155,25 +2159,27 @@ function AiChatTab({
           />
 
           {/* Attach file button — paperclip icon */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isStreaming || !signedInEmail}
-            className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-surface2 border border-border2 text-muted hover:border-accent hover:text-accent transition-all duration-200 disabled:opacity-30"
-            title="Attach file (.pdf, .md, .txt)"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              viewBox="0 0 14 14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {ENABLE_PDF_ATTACHMENTS && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || !signedInEmail}
+              className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-surface2 border border-border2 text-muted hover:border-accent hover:text-accent transition-all duration-200 disabled:opacity-30"
+              title="Attach file (.pdf, .md, .txt)"
             >
-              <path d="M11 6.5l-5.3 5.3a2.1 2.1 0 01-3-3l6.4-6.4a1.4 1.4 0 012 2L4.7 10.7a.7.7 0 01-1-1l4.3-4.3" />
-            </svg>
-          </button>
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11 6.5l-5.3 5.3a2.1 2.1 0 01-3-3l6.4-6.4a1.4 1.4 0 012 2L4.7 10.7a.7.7 0 01-1-1l4.3-4.3" />
+              </svg>
+            </button>
+          )}
 
           <button
             type="button"

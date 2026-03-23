@@ -328,6 +328,16 @@ Security notes:
 - `VITE_SUPABASE_ANON_KEY` is public by design.
 - `GROQ_API_KEY` must stay server-side only (never in frontend env).
 
+### Optional: PDF Attachment Feature
+
+The PDF/file attachment feature is disabled by default for public forks. To enable it locally, add to your `.env`:
+
+```dotenv
+VITE_ENABLE_PDF_ATTACHMENTS=true
+```
+
+This shows the file attachment button (paperclip icon) in the AI chat, allowing you to attach PDFs, Markdown, and text files as context for AI graph generation.
+
 ---
 
 ## 🧠 How To Create Knowledge Graphs
