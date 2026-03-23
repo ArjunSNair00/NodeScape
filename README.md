@@ -571,9 +571,10 @@ The primary focus is anything that improves the core mechanism: understanding, n
 - Trash button deletes selected nodes or clears all
 
 ### UI Overhaul
+- Global search bar with Fuse.js fuzzy matching, content search, and highlight neighbours
+- Search options (content search, highlight neighbours) behind a cog toggle popup
 - Red close button in node content view (closes split screen, remembers mode)
 - Lock camera moved next to Path Mode; smooth lerp, single-pan disengage
-- Search options behind cog toggle popup
 - Marquee tool repositioned to top-right toolbar
 - 2D state (positions, physics) persists across mode switches
 
