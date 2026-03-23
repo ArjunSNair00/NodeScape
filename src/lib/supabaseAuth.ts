@@ -93,5 +93,15 @@ export async function signOutSupabase() {
   return supabase.auth.signOut();
 }
 
+export async function resetPassword(email: string) {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { error: new Error("Missing Supabase config") };
+  }
+  return supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+}
+
 // Initialize client immediately so detectSessionInUrl processes hash on page load
 getSupabaseClient();
