@@ -7,7 +7,9 @@ import {
 
 const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL ?? "https://trxpofoucgdytlhovrkq.supabase.co";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyeHBvZm91Y2dkeXRsaG92cmtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNzQyNjcsImV4cCI6MjA4OTc1MDI2N30.FDM-GQl4u1OdkwfduQCQLxOBRTk9cHOvlHJlLojjVoA";
 
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 

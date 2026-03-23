@@ -39,7 +39,9 @@ import { getSupabaseAccessToken } from "../lib/supabaseAuth";
 
 const AI_FUNCTION_URL =
   "https://trxpofoucgdytlhovrkq.supabase.co/functions/v1/ai";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyeHBvZm91Y2dkeXRsaG92cmtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNzQyNjcsImV4cCI6MjA4OTc1MDI2N30.FDM-GQl4u1OdkwfduQCQLxOBRTk9cHOvlHJlLojjVoA";
 
 interface Props {
   graphData: GraphData;
