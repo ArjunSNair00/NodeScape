@@ -1816,6 +1816,62 @@ function AiChatTab({
                 {isAuthLoading ? "..." : "Sign out"}
               </button>
             </div>
+          ) : showForgotPassword ? (
+            <>
+              <p className="text-[10px] text-muted2 mb-2">
+                {resetEmailSent
+                  ? "Reset link sent! Check your email."
+                  : "Enter your email to receive a password reset link."}
+              </p>
+              {!resetEmailSent && (
+                <div className="grid grid-cols-1 gap-2">
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="Email"
+                    className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={isAuthLoading}
+                      className="flex-1 text-[10px] px-2 py-1.5 rounded border border-accent text-accent bg-accent/10 hover:bg-accent/20 transition-colors disabled:opacity-50"
+                    >
+                      {isAuthLoading ? "..." : "Send reset link"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setAuthError(null);
+                      }}
+                      className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
+                    >
+                      Back
+                    </button>
+                  </div>
+                  {authError && (
+                    <p className="text-[10px] text-[#f87171] leading-relaxed">
+                      {authError}
+                    </p>
+                  )}
+                </div>
+              )}
+              {resetEmailSent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setResetEmailSent(false);
+                  }}
+                  className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
+                >
+                  Back to sign in
+                </button>
+              )}
+            </>
           ) : (
             <>
               <p className="text-[10px] text-muted2 mb-2">
@@ -2073,63 +2129,7 @@ function AiChatTab({
                     </span>
                   ) : file.error ? (
                     <span title={file.error}>{file.name} — error</span>
-          ) : showForgotPassword ? (
-            <>
-              <p className="text-[10px] text-muted2 mb-2">
-                {resetEmailSent
-                  ? "Reset link sent! Check your email."
-                  : "Enter your email to receive a password reset link."}
-              </p>
-              {!resetEmailSent && (
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="Email"
-                    className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      disabled={isAuthLoading}
-                      className="flex-1 text-[10px] px-2 py-1.5 rounded border border-accent text-accent bg-accent/10 hover:bg-accent/20 transition-colors disabled:opacity-50"
-                    >
-                      {isAuthLoading ? "..." : "Send reset link"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowForgotPassword(false);
-                        setAuthError(null);
-                      }}
-                      className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
-                    >
-                      Back
-                    </button>
-                  </div>
-                  {authError && (
-                    <p className="text-[10px] text-[#f87171] leading-relaxed">
-                      {authError}
-                    </p>
-                  )}
-                </div>
-              )}
-              {resetEmailSent && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPassword(false);
-                    setResetEmailSent(false);
-                  }}
-                  className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
-                >
-                  Back to sign in
-                </button>
-              )}
-            </>
-          ) : (
+                  ) : (
                     <span>{file.name}</span>
                   )}
 
