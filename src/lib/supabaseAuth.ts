@@ -92,3 +92,6 @@ export async function signOutSupabase() {
   }
   return supabase.auth.signOut();
 }
+
+// Initialize client immediately so detectSessionInUrl processes hash on page load
+getSupabaseClient();
