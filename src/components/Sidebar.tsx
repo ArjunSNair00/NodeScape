@@ -1507,14 +1507,13 @@ function AiChatTab({
       model: string = GROQ_MODEL,
     ): Promise<GraphData | null> => {
       const userAccessToken = await getSupabaseAccessToken();
-      if (!userAccessToken) throw new Error("Session expired");
 
       const response = await fetch(AI_FUNCTION_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           apikey: SUPABASE_ANON_KEY!,
-          Authorization: `Bearer ${userAccessToken}`,
+          ...(userAccessToken ? { Authorization: `Bearer ${userAccessToken}` } : {}),
         },
         body: JSON.stringify({
           model,
@@ -1799,153 +1798,7 @@ function AiChatTab({
         style={{ minHeight: 0 }}
       >
         <div className="border border-border rounded-xl bg-surface2 p-3">
-          {isAuthChecking ? (
-            // Skeleton placeholder — prevents the sign-in form flashing before
-            // the initial async session check resolves.
-            <div className="h-7 rounded bg-surface animate-pulse" />
-          ) : signedInEmail ? (
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] text-muted2 truncate">
-                Signed in as <span className="text-text">{signedInEmail}</span>
-              </p>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                disabled={isAuthLoading}
-                className="text-[10px] px-2.5 py-1 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
-              >
-                {isAuthLoading ? "..." : "Sign out"}
-              </button>
-            </div>
-          ) : showForgotPassword ? (
-            <>
-              <p className="text-[10px] text-muted2 mb-2">
-                {resetEmailSent
-                  ? "Reset link sent! Check your email."
-                  : "Enter your email to receive a password reset link."}
-              </p>
-              {!resetEmailSent && (
-                <div className="grid grid-cols-1 gap-2">
-                  <input
-                    type="email"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="Email"
-                    autoComplete="email"
-                    className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      disabled={isAuthLoading}
-                      className="flex-1 text-[10px] px-2 py-1.5 rounded border border-accent text-accent bg-accent/10 hover:bg-accent/20 transition-colors disabled:opacity-50"
-                    >
-                      {isAuthLoading ? "..." : "Send reset link"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowForgotPassword(false);
-                        setAuthError(null);
-                      }}
-                      className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
-                    >
-                      Back
-                    </button>
-                  </div>
-                  {authError && (
-                    <p className="text-[10px] text-[#f87171] leading-relaxed">
-                      {authError}
-                    </p>
-                  )}
-                </div>
-              )}
-              {resetEmailSent && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPassword(false);
-                    setResetEmailSent(false);
-                  }}
-                  className="text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors"
-                >
-                  Back to sign in
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="text-[10px] text-muted2 mb-2">
-                Sign in to use AI generation.
-              </p>
-              <div className="grid grid-cols-1 gap-2">
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="Email"
-                  autoComplete="email"
-                  className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
-                />
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="Password"
-                    autoComplete="current-password"
-                    className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 pr-8 outline-none focus:border-accent"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors"
-                  >
-                    {showPassword ? (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                    ) : (
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    )}
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSignIn}
-                    disabled={isAuthLoading}
-                    className="flex-1 text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSignUp}
-                    disabled={isAuthLoading}
-                    className="flex-1 text-[10px] px-2 py-1.5 rounded border border-border2 text-muted2 hover:border-accent hover:text-accent transition-colors disabled:opacity-50"
-                  >
-                    Sign up
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPassword(true);
-                    setResetEmailSent(false);
-                    setAuthError(null);
-                  }}
-                  className="text-[10px] text-muted hover:text-accent transition-colors text-left"
-                >
-                  Forgot password?
-                </button>
-                {authError && (
-                  <p className="text-[10px] text-[#f87171] leading-relaxed">
-                    {authError}
-                  </p>
-                )}
-              </div>
-            </>
-          )}
+          {/* Auth disabled — AI works without sign-in */}
         </div>
 
         <AnimatePresence>
@@ -2254,12 +2107,8 @@ function AiChatTab({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              signedInEmail
-                ? `Type a topic to ${aiMode}…`
-                : "Sign in first to use AI"
-            }
-            disabled={isStreaming || !signedInEmail}
+            placeholder={`Type a topic to ${aiMode}…`}
+            disabled={isStreaming}
             className="flex-1 min-w-0 bg-surface2 border border-border2 rounded-lg text-[11px] text-text px-3 py-2 outline-none placeholder-muted transition-colors focus:border-accent"
           />
 
@@ -2268,7 +2117,7 @@ function AiChatTab({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isStreaming || !signedInEmail}
+              disabled={isStreaming}
               className="flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg bg-surface2 border border-border2 text-muted hover:border-accent hover:text-accent transition-all duration-200 disabled:opacity-30"
               title="Attach file (.pdf, .md, .txt)"
             >
@@ -2316,7 +2165,6 @@ function AiChatTab({
               type="submit"
               disabled={
                 !input.trim() ||
-                !signedInEmail ||
                 parsingRef.current > 0
               }
               className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent text-white disabled:opacity-30 hover:bg-[#6a58e8] transition-all duration-200 disabled:hover:bg-accent"
