@@ -103,5 +103,13 @@ export async function resetPassword(email: string) {
   });
 }
 
+export async function updatePassword(newPassword: string) {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { error: new Error("Missing Supabase config") };
+  }
+  return supabase.auth.updateUser({ password: newPassword });
+}
+
 // Initialize client immediately so detectSessionInUrl processes hash on page load
 getSupabaseClient();

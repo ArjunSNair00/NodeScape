@@ -11,6 +11,7 @@ import { Graph2DHandle } from "./components/True2DGraph/graph2d.types";
 import { DEFAULT_GRAPH } from "./data/defaultGraph";
 import { useTheme } from "./hooks/useTheme";
 import { useGraphLibrary } from "./hooks/useGraphLibrary";
+import { updatePassword } from "./lib/supabaseAuth";
 import Fuse from "fuse.js";
 
 type View = "home" | "graph";
@@ -484,8 +485,84 @@ export default function App() {
     setView("home");
   };
 
+  // Password recovery — detect type=recovery in URL hash
+  const [isRecovery, setIsRecovery] = useState(
+    () => window.location.hash.includes("type=recovery"),
+  );
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
+
+  const handleUpdatePassword = async () => {
+    if (newPassword.length < 6) {
+      setRecoveryError("Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setRecoveryError("Passwords do not match.");
+      return;
+    }
+    setRecoveryError(null);
+    const { error } = await updatePassword(newPassword);
+    if (error) {
+      setRecoveryError(error.message);
+    } else {
+      setRecoverySuccess(true);
+      window.location.hash = "";
+      setTimeout(() => {
+        setIsRecovery(false);
+        setNewPassword("");
+        setConfirmPassword("");
+        setRecoverySuccess(false);
+      }, 2000);
+    }
+  };
+
   return (
     <div className="relative w-full h-full overflow-hidden bg-bg">
+      {/* Password Recovery Overlay */}
+      {isRecovery && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-bg/90 backdrop-blur-sm">
+          <div className="w-[340px] bg-surface border border-border rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-sm font-medium text-text mb-1">Reset Password</h2>
+            <p className="text-[11px] text-muted mb-4">
+              {recoverySuccess
+                ? "Password updated successfully!"
+                : "Enter your new password below."}
+            </p>
+            {!recoverySuccess && (
+              <div className="space-y-3">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                  className="w-full bg-surface2 border border-border2 rounded-lg text-[12px] text-text px-3 py-2.5 outline-none focus:border-accent"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  className="w-full bg-surface2 border border-border2 rounded-lg text-[12px] text-text px-3 py-2.5 outline-none focus:border-accent"
+                  onKeyDown={(e) => e.key === "Enter" && handleUpdatePassword()}
+                />
+                <button
+                  onClick={handleUpdatePassword}
+                  className="w-full py-2.5 bg-accent text-white text-[11px] tracking-widest font-medium rounded-lg hover:bg-[#6a58e8] transition-all"
+                >
+                  Update Password
+                </button>
+                {recoveryError && (
+                  <p className="text-[10px] text-[#f87171]">{recoveryError}</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {view === "home" ? (
           <HomePage
