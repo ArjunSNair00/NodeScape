@@ -99,7 +99,7 @@ export async function resetPassword(email: string) {
     return { error: new Error("Missing Supabase config") };
   }
   return supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
+    redirectTo: `${window.location.origin}/auth-callback.html`,
   });
 }
 
