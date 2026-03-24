@@ -303,7 +303,7 @@ If you fork NodeScape and want AI generation to work, use your own backend and k
 2. Deploy the edge function:
 
 ```powershell
-npx supabase functions deploy ai
+npx supabase functions deploy ai --no-verify-jwt
 ```
 
 3. Set your server-side secret in Supabase:
@@ -353,8 +353,7 @@ Use the **AI Chatbot in the right sidebar** to automatically generate structured
 Steps:
 
 1. Open the **AI Data sidebar**
-2. Sign in with your Supabase account in the AI panel
-3. Ask the chatbot for a topic
+2. Ask the chatbot for a topic
 
 Example:
 
@@ -561,6 +560,15 @@ The primary focus is anything that improves the core mechanism: understanding, n
 - Dual model selection — `llama-3.3-70b-versatile` for topics, `llama-3.1-8b-instant` for files/long prompts
 - PDF attachment behind feature flag (`VITE_ENABLE_PDF_ATTACHMENTS`)
 - Generation stage indicators (Connecting/Streaming/Parsing/Rendering) with live node counter
+
+### Auth (Optional)
+- Auth disabled by default — AI chat works without sign-in
+- Forgot password with email reset link
+- Password recovery form on reset link click
+- Auth callback page for email confirmation and password reset
+- Show/hide password toggle on all password fields
+- Google autofill support (autocomplete attributes)
+- Hardcoded Supabase fallbacks for deployment without .env
 
 ### Graph Interaction
 - Undo/redo system (Ctrl+Z/Y) with configurable history (default 100)

@@ -13,13 +13,13 @@ NodeScape is a secure, open-source, AI-augmented knowledge graph and system dash
 - **AI Integration:** Groq API (OpenAI-compatible, called from Supabase Edge Function)
 - **PDF Parsing:** pdfjs-dist (browser-based)
 - **Search:** Fuse.js (fuzzy search)
-- **Auth:** Supabase email/password, JWT-enforced, session auto-refresh, localStorage persistence
-- **Security:** All AI endpoints require authentication, JWT, and are rate-limited
+- **Auth:** Supabase email/password (optional), session auto-refresh, localStorage persistence
+- **Security:** Supabase anon key is public, GROQ_API_KEY server-side only
 
 ## Main Features
 
 - Interactive knowledge graph (2D/3D with full feature parity)
-- AI chat and knowledge augmentation (via authenticated Supabase Edge Function proxy)
+- AI chat and knowledge augmentation (via Supabase Edge Function proxy)
 - File attachment for AI (PDF, Markdown, Text) with chunking and sequential processing
 - Persistent PDF memory for AI chat sessions
 - Path Mode with directional arrows, hide ambient, and append mode
@@ -49,8 +49,9 @@ NodeScape is a secure, open-source, AI-augmented knowledge graph and system dash
 ## Security & Auth
 
 - **Supabase anon key is public** (safe for frontend)
-- **AI Edge Function is protected**: requires JWT, only accessible to signed-in users
+- **AI Edge Function**: JWT verification is disabled (auth is optional)
 - **No private API keys in frontend**
+- **Auth features**: Sign in/up, forgot password, email confirmation, password recovery
 - **Session tokens**: managed by Supabase SDK, auto-refreshed, stored in localStorage
 
 ## Environment Variables
@@ -61,11 +62,11 @@ NodeScape is a secure, open-source, AI-augmented knowledge graph and system dash
 
 ## Usage Flow
 
-1. User signs in (Supabase email/password)
-2. Session token is stored and auto-refreshed
-3. AI requests are proxied through Supabase Edge Function (JWT required)
+1. User opens the app — AI chat is immediately available (no sign-in required)
+2. Optional: sign in via Supabase for account-based features
+3. AI requests are proxied through Supabase Edge Function
 4. Rate limiting and CORS enforced on backend
-5. UI displays session state, errors, and toasts as needed
+5. UI displays errors and toasts as needed
 
 ## Open Source & Forking
 
@@ -105,6 +106,14 @@ NodeScape is a secure, open-source, AI-augmented knowledge graph and system dash
 - **Marquee tool**: Moved to top-right toolbar in 2D mode
 - **2D state persistence**: Node positions and physics state preserved when switching between 2D and 3D modes
 - **Remove SAVE 2D button**: Positions auto-save on unmount and through regular save
+
+### Auth & Security
+- **Auth disabled by default**: AI chat works without sign-in; edge function no longer requires JWT
+- **Forgot password**: Email-based password reset with recovery form
+- **Auth callback page**: Simple HTML page for email confirmation and password reset (`/auth-callback.html`)
+- **Show/hide password toggle**: Eye icon on all password fields
+- **Google autofill**: `autoComplete` attributes on email/password inputs
+- **Hardcoded fallbacks**: Supabase URL and anon key have hardcoded fallbacks for deployment without .env
 
 ### Bug Fixes
 - Fix hover neighbor highlighting when path mode is OFF

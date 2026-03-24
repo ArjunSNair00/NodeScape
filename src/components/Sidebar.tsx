@@ -1797,22 +1797,7 @@ function AiChatTab({
         className="flex-1 overflow-y-auto p-4 space-y-3"
         style={{ minHeight: 0 }}
       >
-        <div className="border border-border rounded-xl bg-surface2 p-3">
-          {/* Auth disabled — AI works without sign-in */}
-        </div>
 
-        <AnimatePresence>
-          {authToast && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className="text-[10px] rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 text-[#f87171] px-3 py-2"
-            >
-              {authToast}
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {messages.map((msg, i) => (
           <div

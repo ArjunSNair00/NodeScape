@@ -85,16 +85,6 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  if (!isAuthenticatedUser(req)) {
-    return new Response(JSON.stringify({ error: "Authentication required" }), {
-      status: 401,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-    })
-  }
-
   const clientId = getClientIdentifier(req)
   if (isRateLimited(clientId)) {
     return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {

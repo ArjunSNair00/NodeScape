@@ -84,6 +84,7 @@ When files are attached, a dedicated system prompt is used that instructs the AI
 - Streams SSE responses through to the client when `stream=true`
 - Returns raw model response as JSON
 - Includes CORS headers and handles OPTIONS preflight
+- **JWT verification is disabled** — auth is optional
 
 ## Prompting and Output Contract
 
@@ -115,8 +116,9 @@ When files are attached, a dedicated system prompt is used that instructs the AI
 
 - **Frontend AI paths** call the Supabase edge function instead of Groq directly.
 - **GROQ_API_KEY** must only exist in the edge-function environment (server-side).
-- **AI generation requires a signed-in Supabase user session** (function JWT verification is enforced).
+- **Auth is optional** — AI generation works without sign-in. JWT verification is disabled on the edge function.
 - **No private API keys are ever exposed to the frontend.**
+- **Supabase URL and anon key have hardcoded fallbacks** — the app works on deployment without .env.
 - See CONTEXT.md for a full security model and architecture summary.
 
 ## Open-Source Forks
@@ -125,7 +127,7 @@ If you fork NodeScape and want AI generation to work, you must use your own back
 
 Checklist for forks:
 
-- Deploy the `ai` edge function to your Supabase project
+- Deploy the `ai` edge function to your Supabase project (use `--no-verify-jwt`)
 - Set `GROQ_API_KEY` in Supabase function secrets (never in frontend)
 - Set `VITE_SUPABASE_ANON_KEY` in frontend `.env`
 - Update function URL constants in `src/components/Sidebar.tsx` and `src/components/Graph3D.tsx` to your Supabase URL
