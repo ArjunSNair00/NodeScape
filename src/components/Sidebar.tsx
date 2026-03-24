@@ -1258,6 +1258,7 @@ function AiChatTab({
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
@@ -1830,6 +1831,7 @@ function AiChatTab({
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                     placeholder="Email"
+                    autoComplete="email"
                     className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
                   />
                   <div className="flex gap-2">
@@ -1883,15 +1885,30 @@ function AiChatTab({
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
                   placeholder="Email"
+                  autoComplete="email"
                   className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
                 />
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="Password"
-                  className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 outline-none focus:border-accent"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="Password"
+                    autoComplete="current-password"
+                    className="w-full bg-surface border border-border2 rounded-md text-[11px] text-text px-2.5 py-2 pr-8 outline-none focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors"
+                  >
+                    {showPassword ? (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    )}
+                  </button>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
